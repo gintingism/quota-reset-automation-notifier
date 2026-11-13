@@ -155,11 +155,14 @@ function escapeText(str) {
 }
 
 async function fetchWorkerOverview(workerUrl, authToken) {
-  const box = document.getElementById('workerOverview');
-  const rowsEl = document.getElementById('workerRows');
-  const tierEl = document.getElementById('workerTier');
-  if (!workerUrl || !authToken || !box || !rowsEl) {
-    if (box) box.hidden = true;
+  const agCard = document.getElementById('antigravityCard');
+  const agRowsEl = document.getElementById('agRows');
+  const agTierEl = document.getElementById('agTier');
+  const copilotCard = document.getElementById('copilotCard');
+
+  if (!workerUrl || !authToken || !agCard || !copilotCard) {
+    if (agCard) agCard.hidden = true;
+    if (copilotCard) copilotCard.hidden = true;
     return;
   }
 
@@ -169,14 +172,15 @@ async function fetchWorkerOverview(workerUrl, authToken) {
       headers: { 'X-Auth-Token': authToken },
     });
     if (!res.ok) {
-      box.hidden = true;
+      agCard.hidden = true;
+      copilotCard.hidden = true;
       return;
     }
     const data = await res.json();
     const ag = data?.providers?.antigravity;
     const copilot = data?.providers?.github_copilot;
-    const rows = [];
 
+    const agRows = [];
     if (Array.isArray(ag?.groups)) {
       ag.groups.forEach((g) => {
         const win5h = (g.windows || []).find((w) => /5h/i.test(w.label)) || g.windows?.[0];
@@ -184,42 +188,59 @@ async function fetchWorkerOverview(workerUrl, authToken) {
         const pct = clampPct(win5h.remaining_percent);
         const tone = getTone(pct);
         const resetMs = win5h.reset_at ? Date.parse(win5h.reset_at) : 0;
-        rows.push(`
+        agRows.push(`
           <div class="overview-row">
             <span class="overview-name">${escapeText(g.name)}</span>
             <span class="overview-right">
               <span class="overview-timer num" data-reset-ms="${Number.isFinite(resetMs) ? resetMs : 0}">${resetMs ? formatCountdown(resetMs) : 'Ready'}</span>
+              <span class="mini-bar-wrap"><span class="mini-bar" style="display:block;width:${pct}%;background:${tone.color}"></span></span>
               <span class="badge num ${tone.cls}">${pct}%</span>
             </span>
           </div>`);
       });
     }
 
+    if (agRows.length > 0) {
+      agTierEl.textContent = ag?.plan_tier || 'Active';
+      agRowsEl.innerHTML = agRows.join('');
+      agCard.hidden = false;
+    } else {
+      agCard.hidden = true;
+    }
+
     if (copilot && !copilot.error) {
       const pct = clampPct(copilot.percent_remaining ?? copilot.quota_percent);
       const tone = getTone(pct);
       const resetMs = copilot.reset_at ? Date.parse(copilot.reset_at) : 0;
-      rows.push(`
-        <div class="overview-row">
-          <span class="overview-name">GitHub Copilot</span>
-          <span class="overview-right">
-            <span class="overview-timer num" data-reset-ms="${Number.isFinite(resetMs) ? resetMs : 0}">${resetMs ? formatCountdown(resetMs) : '—'}</span>
-            <span class="badge num ${tone.cls}">${pct}%</span>
-          </span>
-        </div>`);
+
+      document.getElementById('copilotPlan').textContent = copilot.plan_tier || 'individual';
+      const creditsText =
+        copilot.credits_remaining !== undefined && copilot.credits_entitlement !== undefined
+          ? `${copilot.credits_remaining} / ${copilot.credits_entitlement} AI credits sisa`
+          : `${copilot.credits_used ?? 0} terpakai`;
+      document.getElementById('copilotCredits').textContent = creditsText;
+
+      const pctBadge = document.getElementById('copilotPctBadge');
+      pctBadge.textContent = `${pct}% sisa`;
+      pctBadge.className = `badge num ${tone.cls}`;
+
+      const bar = document.getElementById('copilotBar');
+      bar.style.width = `${pct}%`;
+      bar.style.backgroundColor = tone.color;
+
+      const cdEl = document.getElementById('copilotCountdown');
+      cdEl.dataset.resetMs = Number.isFinite(resetMs) ? String(resetMs) : '0';
+      cdEl.textContent = resetMs ? formatCountdown(resetMs) : '—';
+
+      copilotCard.hidden = false;
+    } else {
+      copilotCard.hidden = true;
     }
 
-    if (rows.length === 0) {
-      box.hidden = true;
-      return;
-    }
-
-    tierEl.textContent = ag?.plan_tier || 'Active';
-    rowsEl.innerHTML = rows.join('');
-    box.hidden = false;
     tickLiveCountdowns();
   } catch {
-    box.hidden = true;
+    agCard.hidden = true;
+    copilotCard.hidden = true;
   }
 }
 

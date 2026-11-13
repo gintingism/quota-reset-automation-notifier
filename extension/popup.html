@@ -91,15 +91,39 @@
       </div>
     </section>
 
-    <section id="workerOverview" class="card" aria-label="Worker Overview" hidden>
+    <section id="antigravityCard" class="card" aria-label="Kuota Antigravity" hidden>
       <div class="overview-header">
         <span class="card-title">
-          <i data-lucide="server"></i>
-          <span>Antigravity &amp; Copilot</span>
+          <i data-lucide="layers"></i>
+          <span>Antigravity</span>
         </span>
-        <span id="workerTier" class="badge num">—</span>
+        <span id="agTier" class="badge num">—</span>
       </div>
-      <div id="workerRows"></div>
+      <div id="agRows"></div>
+    </section>
+
+    <section id="copilotCard" class="card" aria-label="Kuota GitHub Copilot" hidden>
+      <div class="overview-header">
+        <span class="card-title">
+          <i data-lucide="github"></i>
+          <span>GitHub Copilot</span>
+        </span>
+        <span id="copilotPlan" class="badge num">—</span>
+      </div>
+      <div class="bar-header" style="margin-bottom:6px;">
+        <span id="copilotCredits" class="muted num">—</span>
+        <span id="copilotPctBadge" class="badge num">—</span>
+      </div>
+      <div class="bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div id="copilotBar" class="bar-fill"></div>
+      </div>
+      <div class="split-meta">
+        <div class="meta-line">
+          <i data-lucide="clock"></i>
+          <span>Reset bulanan</span>
+        </div>
+        <span id="copilotCountdown" class="badge num overview-timer">—</span>
+      </div>
     </section>
 
     <button id="syncBtn" type="button" class="btn btn-primary">
