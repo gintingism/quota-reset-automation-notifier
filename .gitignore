@@ -1,10 +1,4 @@
-__pycache__/
-*.py[cod]
-.venv/
-config.json
-*.log
-dist/
-build/
-*.spec
-ai_quota_widget.ico
-quota_reset_notifier.ico
+node_modules/
+.wrangler/
+.dev.vars
+.env

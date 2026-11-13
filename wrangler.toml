@@ -1,0 +1,35 @@
+name = "quota-reset-automation"
+main = "src/index.js"
+compatibility_date = "2026-10-03"
+
+# Run automation tick every 5 minutes (24/7, no UptimeRobot needed)
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "QUOTA_KV"
+id = "822b870f7d264166a58c1f6d2d72e68e"
+
+[vars]
+# Auto-Wake configuration (per 5h pool)
+AUTO_WAKE_ENABLED = "true"
+WAKE_GEMINI_MODEL = "gemini-3-flash"
+WAKE_CLAUDE_MODEL = "claude-sonnet-5-5-medium"
+WAKE_PROMPT = "hi"
+WAKE_MAX_OUTPUT_TOKENS = "16"
+# Optional active window in local timezone (e.g. "07:00-23:00"); leave empty for 24/7
+WAKE_TIME_WINDOW = ""
+TIMEZONE_OFFSET_HOURS = "7"
+
+# Notification configuration
+LOW_QUOTA_THRESHOLD = "20"
+NOTIFY_ON_WAKE = "true"
+NOTIFY_ON_RESET = "true"
+
+# Secrets to set via `wrangler secret put <NAME>`:
+# - AUTH_TOKEN
+# - ANTIGRAVITY_REFRESH_TOKEN
+# - TELEGRAM_BOT_TOKEN (optional)
+# - TELEGRAM_CHAT_ID (optional)
+# - DISCORD_WEBHOOK_URL (optional)
+# - GITHUB_TOKEN (optional, for GitHub Copilot)

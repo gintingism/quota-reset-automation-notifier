@@ -1,212 +1,100 @@
-# Quota Reset Notifier
+# Quota Reset Automation Notifier
 
-Quota Reset Notifier is a small Windows desktop app for watching quota data from
-Google Antigravity and GitHub Copilot. It keeps the current status visible in a
-floating widget and can send a Telegram or Discord message when a provider
-reports that its weekly reset time has passed.
+A small Cloudflare Worker that watches your Antigravity (and optional GitHub Copilot) quota every 5 minutes, sends alerts to Telegram or Discord, and automatically sends a minimal `"hi"` prompt when a 5-hour quota pool resets to 100% so the next 5-hour timer starts right away.
 
-The app does not manufacture quota numbers. When a provider cannot supply a
-fresh, confirmed value, the widget shows that the value is unavailable instead
-of presenting an estimate as fact.
+No desktop app or local IDE needs to stay open.
 
-## What it does
+## How it works
 
-- Shows rolling five-hour and weekly quota information in a desktop widget.
-- Runs from the Windows system tray and supports a docked layout.
-- Stores window, timer, and provider settings in
-  `%APPDATA%\AIQuotaWidget\config.json`.
-- Reads Antigravity through the configured source or the official
-  `antigravity /usage` command when no endpoint is configured.
-- Reads GitHub Copilot through the configured endpoint. The default internal
-  endpoint is undocumented and may change.
-- Sends weekly reset reminders to Telegram, Discord, or both.
-- Deduplicates reset events and retries temporary notification failures.
-- Rejects stale, estimated, cached, or errored provider data for reminders.
-- Keeps provider credentials out of relay payloads and application logs.
+Every 5 minutes (`*/5 * * * *` in `wrangler.toml`), Cloudflare's `scheduled()` handler runs `runAutomationTick()` in `src/index.js`:
 
-## Current limitations
+1. **Refreshes OAuth access token** (`src/oauth.js`) using `ANTIGRAVITY_REFRESH_TOKEN` and caches it in `QUOTA_KV`.
+2. **Fetches live quota pools** (`src/cloudcode.js`) from `daily-cloudcode-pa.googleapis.com` using `/v1internal:loadCodeAssist`, `/v1internal:fetchAvailableModels`, and `/v1internal:retrieveUserQuotaSummary`:
+   - **Gemini Models** (Weekly + 5h)
+   - **Claude and GPT models** (Weekly + 5h)
+   - **Gemini 4 Argon** (Weekly)
+3. **Runs Auto-Wake per 5h pool** (`src/wake_engine.js`):
+   - Checks each pool that has a `5H` window (`Gemini Models` -> `WAKE_GEMINI_MODEL`, `Claude and GPT models` -> `WAKE_CLAUDE_MODEL`).
+   - Skips if the pool is not at 100%, inside the 2-minute safety margin after a previous reset, within the 10-minute cooldown, already triggered for the same `reset_time_iso`, outside `WAKE_TIME_WINDOW`, or if its weekly limit is at 0%.
+   - Sends `"hi"` via `/v1internal:streamGenerateContent?alt=sse` (`maxOutputTokens: 16`) to lock in the new 5-hour countdown.
+4. **Sends deduplicated alerts** (`src/notifier.js`) to Telegram and/or Discord and stores dedup state in `QUOTA_KV`.
+5. **Optionally checks GitHub Copilot** (`src/copilot.js`) if `GITHUB_TOKEN` is set.
 
-Quota providers expose different information, so the app cannot promise one
-identical data source for every account.
+## Project files
 
-- GitHub documents individual AI Credits as a monthly allowance. Its documented
-  usage APIs focus on organization and enterprise reporting. A live individual
-  quota may therefore be unavailable.
-- Antigravity documents `/usage` and `/quota` as CLI surfaces, but it does not
-  currently provide a stable public quota API for this app to depend on.
-- A weekly reminder is sent only when the provider reports a reset timestamp
-  and the data is fresh. The local weekly schedule is useful for display, not
-  proof that the provider reset.
-- The optional provider-specific post-reset callback is just an HTTPS POST to
-  an endpoint you control. It does not reset provider quota and is disabled
-  unless you configure it.
+- `src/index.js` — Worker `scheduled()` cron and HTTP router
+- `src/oauth.js` — Google OAuth2 refresh token exchange and KV caching
+- `src/cloudcode.js` — Cloud Code API client, quota pool parser, and SSE wake trigger
+- `src/wake_engine.js` — 4-guard `shouldTriggerOnReset()` and active time window check
+- `src/notifier.js` — Telegram/Discord sender with retry and KV deduplication
+- `src/copilot.js` — Optional GitHub Copilot quota fetcher
+- `src/dashboard.js` — HTML status page served at `GET /`
+- `scripts/get-refresh-token.mjs` — One-time local OAuth helper to get `ANTIGRAVITY_REFRESH_TOKEN`
+- `tests/automation.test.js` — Unit tests using `node:test`
+- `wrangler.toml` — Worker bindings, cron schedule, and non-secret config
 
-## Run from source
+## Endpoints
 
-PowerShell:
+- `GET /` — Web dashboard showing quota pools, reset timers, and manual controls
+- `GET /health` — Public health check (`{"ok":true,"service":"quota-reset-automation"}`)
+- `GET /api/quota/latest` — Latest normalized JSON snapshot (requires `X-Auth-Token`)
+- `POST /api/quota/sync` — Push an external v1 snapshot to KV (requires `X-Auth-Token`)
+- `POST /api/automation/tick` — Manually run one sync + auto-wake check (requires `X-Auth-Token`)
+- `POST /api/automation/wake` — Force an immediate wake ping (requires `X-Auth-Token`)
 
-```powershell
-git clone https://github.com/gintingism/quota-reset-notifier.git
-cd quota-reset-notifier
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python main.py
-```
+## Setup
 
-The app tries `gh auth token` first when it auto-configures GitHub Copilot, then
-falls back to the local GitHub hosts file. It does not print the token.
+1. **Install dependencies and log in to Cloudflare**:
+   ```powershell
+   npm install
+   npx wrangler login
+   ```
 
-To run the one-time GitHub configuration without opening the widget:
+2. **Get your Antigravity refresh token (one-time)**:
+   ```powershell
+   npm run auth
+   ```
+   Open the printed URL, sign in with your Google account, and copy the `ANTIGRAVITY_REFRESH_TOKEN`.
 
-```powershell
-python auto_configure_github.py
-```
+3. **Create a KV namespace** and put its `id` in `wrangler.toml` under `[[kv_namespaces]]`:
+   ```powershell
+   npx wrangler kv namespace create QUOTA_KV
+   ```
 
-The script does not replace an existing token. To force a refresh:
+4. **Set Cloudflare secrets**:
+   ```powershell
+   npx wrangler secret put AUTH_TOKEN
+   npx wrangler secret put ANTIGRAVITY_CLIENT_ID
+   npx wrangler secret put ANTIGRAVITY_CLIENT_SECRET
+   npx wrangler secret put ANTIGRAVITY_REFRESH_TOKEN
+   npx wrangler secret put TELEGRAM_BOT_TOKEN
+   npx wrangler secret put TELEGRAM_CHAT_ID
+   ```
+   Optional secrets:
+   ```powershell
+   npx wrangler secret put DISCORD_WEBHOOK_URL
+   npx wrangler secret put GITHUB_TOKEN
+   ```
 
-```powershell
-python -c "from config_manager import ConfigManager; ConfigManager().auto_configure_github_token(force=True)"
-```
+5. **Deploy**:
+   ```powershell
+   npm run deploy
+   ```
 
-## Configure providers
+## Configuration (`wrangler.toml`)
 
-Open **Settings** from the tray menu or by right-clicking the widget.
+- `AUTO_WAKE_ENABLED` — `"true"` or `"false"`
+- `WAKE_GEMINI_MODEL` — Default `"gemini-3-flash"`
+- `WAKE_CLAUDE_MODEL` — Default `"claude-sonnet-5-5-medium"`
+- `WAKE_PROMPT` — Prompt text sent on wake (default `"hi"`)
+- `WAKE_MAX_OUTPUT_TOKENS` — Output token cap for wake requests (default `"16"`)
+- `WAKE_TIME_WINDOW` — Optional local time window like `"07:00-23:00"`, or `""` for 24/7
+- `TIMEZONE_OFFSET_HOURS` — Offset from UTC (default `"7"` for WIB / UTC+7)
+- `LOW_QUOTA_THRESHOLD` — Alert when a window drops to or below this percentage (default `"20"`)
+- `NOTIFY_ON_WAKE` / `NOTIFY_ON_RESET` — `"true"` or `"false"`
 
-### Google Antigravity
-
-You can provide an endpoint, session token, and cookies when your local setup
-needs them. If the endpoint is empty, the app tries:
-
-```powershell
-antigravity /usage
-```
-
-If that command is not available, the app may use the explicit local cache
-configured by the provider adapter. Cached data is marked and is not eligible
-to trigger a reset notification.
-
-### GitHub Copilot
-
-Enable the provider and enter a GitHub token, or let the app discover one with
-the GitHub CLI. You can change the Copilot endpoint and editor version in
-Settings. If the response contains identity data but no usable quota, the app
-shows `--%` and explains that quota is unavailable.
-
-## Configure notifications
-
-Open **Settings > Weekly notifications**.
-
-The app requires both `notifications.enabled` and
-`notifications.weekly_reminders` before it processes reset events.
-
-### Telegram
-
-Create a bot with [@BotFather](https://t.me/BotFather), start a conversation
-with it, then enter the bot token and destination chat ID in Settings. The app
-uses Telegram's `sendMessage` method and sends only the reminder text.
-
-If you do not want to open the desktop widget, use the local setup helper from
-PowerShell:
+## Tests
 
 ```powershell
-python configure_telegram.py
+npm test
 ```
-
-The helper asks for the token through a hidden prompt, waits for a message from
-your Telegram destination, reads the chat ID through Telegram `getUpdates`,
-enables weekly reminders, saves the token and chat ID to the local config, and
-sends one connection test. It does not print the token or write it to the
-repository.
-
-Before running it:
-
-1. Open the bot in Telegram.
-2. Press **Start**.
-3. Send `hello` to the bot.
-4. Run `python configure_telegram.py`.
-
-The helper waits up to two minutes for the message. If the bot has an active
-webhook, Telegram may reject `getUpdates`; remove that webhook or configure the
-chat ID manually in Settings. Rotate a token if it was exposed in a chat,
-terminal history, screenshot, or log.
-
-### Discord
-
-Create an incoming webhook for the target channel under the channel's
-**Integrations** settings. Paste the webhook URL into Settings. The app sends a
-small JSON payload containing the reminder text.
-
-### Visible post-reset message
-
-Turn on **Visible post-reset hello** if you want the reminder text to be sent
-to the configured Telegram or Discord destinations. This message is a local
-notification about a provider-reported reset. It is not a request that causes
-the reset.
-
-Provider-specific callbacks are separate. If you use them, configure an HTTPS
-endpoint for the provider and keep the endpoint under your control. The app
-does not send GitHub tokens, Antigravity tokens, cookies, or webhook secrets in
-the callback payload.
-
-## Configuration file
-
-`config.example.json` shows the available fields. Copy it only when you want
-to prepare an initial configuration manually. The active file is created
-automatically at:
-
-```text
-%APPDATA%\AIQuotaWidget\config.json
-```
-
-The app migrates the older flat Antigravity fields when it reads the file.
-Treat this file as sensitive because it can contain provider credentials and
-notification secrets. Do not commit or share it.
-
-## Build the Windows executable
-
-```powershell
-python -m pip install -r requirements.txt
-python build.py
-```
-
-The build produces `dist\QuotaResetNotifier.exe`. Runtime settings remain under
-`%APPDATA%\AIQuotaWidget`; they are not written into the temporary bundle
-directory.
-
-## Test and checks
-
-Run the unit tests and basic source checks from the repository root:
-
-```powershell
-python -m unittest discover -s tests -v
-python -m compileall -q .
-git diff --check
-```
-
-## Relay and future clients
-
-The optional Cloudflare KV relay and its normalized JSON contract are documented
-in [worker/README.md](worker/README.md) and
-[API_CONTRACT.md](API_CONTRACT.md). The relay receives normalized snapshots,
-not provider credentials.
-
-## Sources
-
-- [GitHub: About repository README files](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes)
-- [GitHub: Copilot billing for individuals](https://docs.github.com/en/copilot/concepts/billing-and-usage/individuals/billing)
-- [GitHub: Copilot usage metrics](https://docs.github.com/en/copilot/concepts/copilot-metrics)
-- [Telegram Bot API](https://core.telegram.org/bots/api)
-- [Discord webhooks](https://docs.discord.com/developers/platform/webhooks)
-- [Antigravity CLI usage](https://antigravity.google/docs/cli/commands/usage)
-
-## License
-
-This project is licensed under the
-[GNU General Public License v3.0 or later](LICENSE).
-
-You may use, study, modify, and redistribute the project under the terms of
-that license. If you distribute a modified version, keep the license and
-source-availability requirements that apply to GPL-covered software.
-
-The dependencies listed in `requirements.txt` remain under their own licenses.
