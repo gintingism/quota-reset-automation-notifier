@@ -45,6 +45,10 @@ function toneClass(pct) {
   return 'is-ok';
 }
 
+const SVG_AG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L3.5 20.5h3.8l1.9-4.3h5.6l1.9 4.3h3.8L12 2zm-1.6 10.8L12 8.9l1.6 3.9h-3.2zM12 15.8a6.5 6.5 0 0 1-5.6-3.2l-1.5 1a8.2 8.2 0 0 0 14.2 0l-1.5-1A6.5 6.5 0 0 1 12 15.8z"/></svg>`;
+const SVG_GH = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12z"/></svg>`;
+const SVG_GEMINI = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81z"/></svg>`;
+
 export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const ag = latest?.providers?.antigravity;
   const copilot = latest?.providers?.github_copilot;
@@ -120,9 +124,12 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const copilotPct = copilot?.percent_remaining ?? copilot?.quota_percent ?? 0;
   const copilotResetMs = toEpochMs(copilot?.reset_at);
   const copilotCard = copilot
-    ? `<div class="card pool-card">
+    ? `<div class="provider-card">
         <div class="pool-header">
-          <div class="pool-title"><i data-lucide="github"></i><span>GitHub Copilot</span></div>
+          <div class="pool-title">
+            <span class="provider-logo is-gh">${SVG_GH}</span>
+            <span>GitHub Copilot</span>
+          </div>
           <span class="badge">${escapeHtml(copilot.plan_tier || 'individual')}</span>
         </div>
         <div class="win-row">
@@ -145,10 +152,13 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const geminiDailyLeft = Math.max(0, 100 - (geminiWeb?.daily_used ?? 0));
   const geminiWeeklyLeft = Math.max(0, 100 - (geminiWeb?.weekly_used ?? 0));
   const geminiCard = geminiWeb
-    ? `<div class="card pool-card">
+    ? `<div class="provider-card">
         <div class="pool-header">
-          <div class="pool-title"><i data-lucide="sparkles"></i><span>Google Gemini Web</span></div>
-          <span class="muted">Extension Sync</span>
+          <div class="pool-title">
+            <span class="provider-logo is-gemini">${SVG_GEMINI}</span>
+            <span>Google Gemini Web</span>
+          </div>
+          <span class="badge">Extension Sync</span>
         </div>
         <div class="win-row">
           <div class="win-info">
@@ -291,7 +301,21 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       padding: 16px;
     }
     .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
-    .pool-title { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 650; }
+    .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 1rem; font-weight: 650; }
+    .provider-logo {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: var(--surface-inset);
+      border: 1px solid var(--border-strong);
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+    .provider-logo svg { width: 16px; height: 16px; fill: currentColor; }
+    .provider-logo.is-ag { color: #60a5fa; }
+    .provider-logo.is-gh { color: #f0f6fc; }
+    .provider-logo.is-gemini { color: #60a5fa; }
+    .kpi-logo { width: 15px; height: 15px; display: inline-flex; align-items: center; }
+    .kpi-logo svg { width: 15px; height: 15px; fill: currentColor; }
     .subpools-grid { display: flex; flex-direction: column; gap: 10px; }
     .subpool-card {
       background: var(--bg);
@@ -409,12 +433,12 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
     <section class="grid">
       <div class="card">
-        <div class="kpi-label"><i data-lucide="timer"></i><span>Antigravity 5h Reset</span></div>
+        <div class="kpi-label"><span class="kpi-logo" style="color:#60a5fa">${SVG_AG}</span><span>Antigravity 5h Reset</span></div>
         <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : '—'}</div>
         <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : '<span data-i18n="waitingNextCycle">Menunggu siklus berikutnya</span>'}</div>
       </div>
       <div class="card">
-        <div class="kpi-label"><i data-lucide="cpu"></i><span>GitHub Copilot</span></div>
+        <div class="kpi-label"><span class="kpi-logo" style="color:#f0f6fc">${SVG_GH}</span><span>GitHub Copilot</span></div>
         <div class="kpi-val num">${copilot?.quota_percent ?? '—'}%</div>
         <div class="muted num">${
           copilot?.error
@@ -433,7 +457,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     <section class="pools">
       <div class="provider-card">
         <div class="pool-header">
-          <div class="pool-title"><i data-lucide="layers"></i><span>Antigravity</span></div>
+          <div class="pool-title">
+            <span class="provider-logo is-ag">${SVG_AG}</span>
+            <span>Antigravity</span>
+          </div>
           <span class="badge">${escapeHtml(ag?.plan_tier || 'Active')}</span>
         </div>
         <div class="subpools-grid">

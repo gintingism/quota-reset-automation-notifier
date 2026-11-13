@@ -419,7 +419,42 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.provider-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.provider-logo svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.provider-logo.is-ag {
+  color: #60a5fa;
+}
+
+.provider-logo.is-gh {
+  color: #f0f6fc;
+}
+
+.provider-logo.is-gemini {
+  color: #60a5fa;
 }
 
 .overview-row {
