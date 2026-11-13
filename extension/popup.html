@@ -2,30 +2,128 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <style>
-    body { width: 300px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; background: #0b0f17; color: #e5e7eb; }
-    h3 { margin: 0 0 8px; font-size: 14px; }
-    .card { background: #121826; border: 1px solid #1f2937; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 12px; }
-    .row { display: flex; justify-content: space-between; margin: 4px 0; }
-    .muted { color: #9ca3af; font-size: 11px; }
-    input, button { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 7px 9px; border-radius: 6px; border: 1px solid #1f2937; background: #121826; color: #e5e7eb; font-size: 12px; }
-    button { background: #2563eb; border-color: #2563eb; font-weight: 600; cursor: pointer; }
-    button.sec { background: #1f2937; border-color: #374151; }
-  </style>
+  <title>Gemini Web Quota Sync</title>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <h3>Gemini Web Quota Sync</h3>
-  <div class="card">
-    <div class="row"><span>Sesi 5h</span><strong id="daily">—</strong></div>
-    <div class="muted" id="dailyReset">Reset: —</div>
-    <div class="row" style="margin-top:6px;"><span>Mingguan</span><strong id="weekly">—</strong></div>
-    <div class="muted" id="weeklyReset">Reset: —</div>
-    <div class="muted" id="syncStatus" style="margin-top:6px;">Worker sync: —</div>
-  </div>
-  <input id="workerUrl" placeholder="https://....workers.dev" />
-  <input id="authToken" type="password" placeholder="X-Auth-Token" />
-  <button id="saveBtn" class="sec">Simpan Pengaturan</button>
-  <button id="syncBtn">Sync Sekarang</button>
+  <header class="header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <i data-lucide="sparkles"></i>
+      </div>
+      <div>
+        <h1 class="brand-title">Gemini Quota Sync</h1>
+        <div class="brand-sub">gemini.google.com/usage</div>
+      </div>
+    </div>
+    <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka halaman usage">
+      <i data-lucide="external-link"></i>
+    </a>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Tampilan">
+    <button type="button" class="tab-btn is-active" data-tab="status" role="tab" aria-selected="true">
+      <i data-lucide="activity"></i>
+      <span>Status</span>
+    </button>
+    <button type="button" class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
+      <i data-lucide="sliders-horizontal"></i>
+      <span>Pengaturan</span>
+    </button>
+  </nav>
+
+  <main id="panel-status" class="panel" role="tabpanel">
+    <div class="status-bar">
+      <div class="status-pill">
+        <span id="syncDot" class="dot"></span>
+        <span id="syncStatus" class="status-text num">Worker sync: —</span>
+      </div>
+      <a id="openWorkerBtn" class="link-btn" href="#" target="_blank" rel="noreferrer" hidden>
+        <span>Dashboard</span>
+        <i data-lucide="arrow-up-right"></i>
+      </a>
+    </div>
+
+    <section class="card ring-card" aria-label="Kuota Sesi 5 Jam">
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 68 68" aria-hidden="true">
+          <circle class="ring-track" cx="34" cy="34" r="28" />
+          <circle id="dailyRing" class="ring-fill" cx="34" cy="34" r="28" stroke-dasharray="175.93" stroke-dashoffset="175.93" />
+        </svg>
+        <div class="ring-center">
+          <span id="daily" class="ring-pct num">—</span>
+          <span class="ring-unit">sisa</span>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="card-label-row">
+          <span class="card-title">
+            <i data-lucide="gauge"></i>
+            <span>Sesi 5h</span>
+          </span>
+          <span id="dailyBadge" class="badge num">—</span>
+        </div>
+        <div class="meta-line">
+          <i data-lucide="clock"></i>
+          <span id="dailyReset" class="num">Reset: —</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Kuota Mingguan">
+      <div class="bar-header">
+        <span class="card-title">
+          <i data-lucide="calendar-days"></i>
+          <span>Mingguan</span>
+        </span>
+        <span id="weekly" class="bar-value num">—</span>
+      </div>
+      <div class="bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div id="weeklyBar" class="bar-fill"></div>
+      </div>
+      <div class="meta-line">
+        <i data-lucide="clock"></i>
+        <span id="weeklyReset" class="num">Reset: —</span>
+      </div>
+    </section>
+
+    <button id="syncBtn" type="button" class="btn btn-primary">
+      <i data-lucide="refresh-cw" id="syncIcon"></i>
+      <span id="syncBtnLabel">Sync Sekarang</span>
+    </button>
+
+    <div id="lastScraped" class="footer-note num">Auto-sync tiap 15 menit saat Chrome terbuka</div>
+  </main>
+
+  <section id="panel-settings" class="panel" role="tabpanel" hidden>
+    <div class="card">
+      <div class="field">
+        <label class="field-label" for="workerUrl">Cloudflare Worker URL</label>
+        <div class="input-wrap">
+          <input id="workerUrl" class="input" type="url" placeholder="https://....workers.dev" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="authToken">X-Auth-Token</label>
+        <div class="input-wrap">
+          <input id="authToken" class="input has-trailing" type="password" placeholder="Masukkan AUTH_TOKEN" autocomplete="off" />
+          <button id="toggleTokenBtn" type="button" class="input-toggle" title="Tampilkan atau sembunyikan token" aria-label="Tampilkan token">
+            <i data-lucide="eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <button id="saveBtn" type="button" class="btn btn-secondary">
+        <i data-lucide="save"></i>
+        <span id="saveBtnLabel">Simpan Pengaturan</span>
+      </button>
+    </div>
+
+    <div class="footer-note">Token disimpan lokal di <code>chrome.storage.local</code></div>
+  </section>
+
+  <script src="vendor/lucide.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
