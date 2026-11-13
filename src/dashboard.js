@@ -77,6 +77,26 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     })
     .join('');
 
+  const copilotCard = copilot
+    ? `<div class="card pool-card">
+        <div class="pool-title">GitHub Copilot <span class="muted">(${escapeHtml(copilot.plan_tier || 'individual')})</span></div>
+        <div class="win-row">
+          <div>
+            <div class="win-label">AI credits (resets monthly)</div>
+            <div class="muted">${
+              copilot.error
+                ? escapeHtml(copilot.error)
+                : `${copilot.credits_used ?? '—'} used · ${copilot.credits_remaining ?? '—'} / ${copilot.credits_entitlement ?? '—'} left · Resets in ${escapeHtml(formatReset(copilot.reset_at, offsetHours))}`
+            }</div>
+          </div>
+          <div class="win-right">
+            <div class="bar-wrap"><div class="bar" style="width:${copilot.percent_remaining ?? copilot.quota_percent ?? 0}%;background:${barColor(copilot.percent_remaining ?? copilot.quota_percent ?? 0)}"></div></div>
+            <span class="pct">${copilot.percent_remaining ?? copilot.quota_percent ?? '—'}% left</span>
+          </div>
+        </div>
+      </div>`
+    : '';
+
   const lastWake = wakeState?.lastWakeResult
     ? `${escapeHtml(wakeState.lastWakeResult.model)} at ${escapeHtml(wakeState.lastWakeResult.triggeredAt)} — "${escapeHtml(wakeState.lastWakeResult.reply)}"`
     : 'Belum ada auto-wake';
@@ -144,6 +164,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
     <div class="pools">
       ${groupCards || '<div class="card muted">Belum ada data pool kuota.</div>'}
+      ${copilotCard}
     </div>
 
     <details>

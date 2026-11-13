@@ -8,6 +8,7 @@ import {
   RESET_TRIGGER_COOLDOWN_MS,
 } from '../src/wake_engine.js';
 import { parseAntigravityModels, parseSseResponse } from '../src/cloudcode.js';
+import { parseCopilotUserResponse } from '../src/copilot.js';
 import { sendDedupedAlert } from '../src/notifier.js';
 
 test('shouldTriggerOnReset enforces all 4 guards', () => {
@@ -140,4 +141,30 @@ test('sendDedupedAlert skips duplicate cycle tokens', async () => {
     'test',
   );
   assert.equal(sent, false);
+});
+
+test('parseCopilotUserResponse extracts AI credits and monthly reset', () => {
+  const parsed = parseCopilotUserResponse({
+    access_type_sku: 'free_educational_quota',
+    token_based_billing: true,
+    quota_reset_date_utc: '2026-12-01T00:00:00.000Z',
+    quota_snapshots: {
+      chat: { percent_remaining: 100, unlimited: true },
+      premium_interactions: {
+        percent_remaining: 37.1,
+        credits_used: 125,
+        quota_remaining: 74.3,
+        entitlement: 200,
+        unlimited: false,
+      },
+    },
+  });
+
+  assert.equal(parsed.plan_tier, 'free_educational_quota');
+  assert.equal(parsed.quota_percent, 37);
+  assert.equal(parsed.percent_remaining, 37.1);
+  assert.equal(parsed.percent_used, 62.9);
+  assert.equal(parsed.credits_used, 125);
+  assert.equal(parsed.credits_remaining, 74.3);
+  assert.equal(parsed.credits_entitlement, 200);
 });

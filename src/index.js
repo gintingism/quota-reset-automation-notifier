@@ -217,11 +217,46 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
     }
   }
 
-  // 2. Optional GitHub Copilot
+  // 2. GitHub Copilot (monthly AI credits monitoring + alerts, no Auto-Wake)
   if (env.GITHUB_TOKEN) {
     const copilotSnapshot = await fetchCopilotQuota(env.GITHUB_TOKEN);
     if (copilotSnapshot) {
       providers.github_copilot = copilotSnapshot;
+
+      const lowThreshold = Number(env.LOW_QUOTA_THRESHOLD ?? 20);
+      if (
+        !copilotSnapshot.error &&
+        lowThreshold > 0 &&
+        copilotSnapshot.quota_percent !== null &&
+        copilotSnapshot.quota_percent <= lowThreshold &&
+        copilotSnapshot.reset_time_iso
+      ) {
+        const sent = await sendDedupedAlert(
+          env,
+          dedupState,
+          'low:copilot',
+          copilotSnapshot.reset_time_iso,
+          `⚠️ <b>Low Quota Alert (GitHub Copilot)</b>\nAI Credits sisa: <b>${copilotSnapshot.percent_remaining}%</b> (${copilotSnapshot.credits_remaining ?? '?'} / ${copilotSnapshot.credits_entitlement ?? '?'})\nReset: ${copilotSnapshot.reset_time_iso}`,
+        );
+        if (sent) summary.alerts.push('low:copilot');
+      }
+
+      if (
+        !copilotSnapshot.error &&
+        isTrue(env.NOTIFY_ON_RESET, true) &&
+        copilotSnapshot.quota_percent !== null &&
+        copilotSnapshot.quota_percent >= 100 &&
+        copilotSnapshot.reset_time_iso
+      ) {
+        const sent = await sendDedupedAlert(
+          env,
+          dedupState,
+          'reset:copilot',
+          copilotSnapshot.reset_time_iso,
+          `✅ <b>GitHub Copilot Monthly Reset (100%)</b>\nAI Credits: ${copilotSnapshot.credits_entitlement ?? 200} siap dipakai.\nReset berikutnya: ${copilotSnapshot.reset_time_iso}`,
+        );
+        if (sent) summary.alerts.push('reset:copilot');
+      }
     }
   }
 
