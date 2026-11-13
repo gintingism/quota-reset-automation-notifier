@@ -86,11 +86,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         .join('');
 
       return `
-        <div class="card pool-card">
-          <div class="pool-header">
-            <div class="pool-title"><i data-lucide="layers"></i><span>${escapeHtml(g.name)}</span></div>
-            <span class="muted">Antigravity Pool</span>
-          </div>
+        <div class="subpool-card">
+          <div class="subpool-title"><i data-lucide="box"></i><span>${escapeHtml(g.name)}</span></div>
           ${windowsHtml}
         </div>`;
     })
@@ -285,24 +282,42 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 3px; }
     .muted { color: var(--muted); font-size: 0.8rem; }
 
-    /* Pools */
-    .pools { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-    .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .pool-title { display: inline-flex; align-items: center; gap: 7px; font-size: 0.96rem; font-weight: 650; }
+    /* Provider Sections & Pools */
+    .pools { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+    .provider-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+    .pool-title { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 650; }
+    .subpools-grid { display: flex; flex-direction: column; gap: 10px; }
+    .subpool-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .subpool-title {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.88rem; font-weight: 650; color: var(--text);
+      margin-bottom: 6px;
+    }
     .win-row {
       display: flex; justify-content: space-between; align-items: center;
-      gap: 14px; padding: 10px 0;
+      gap: 14px; padding: 9px 0;
       border-top: 1px solid var(--border);
     }
     .win-info { min-width: 0; }
-    .win-label { font-size: 0.88rem; font-weight: 600; margin-bottom: 2px; }
+    .win-label { font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; }
     .win-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
     .bar-wrap { width: 100px; height: 7px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
     .bar { height: 100%; border-radius: 999px; }
 
     .badge {
       padding: 2px 7px; border-radius: 6px;
-      font-size: 0.78rem; font-weight: 600;
+      font-size: 0.76rem; font-weight: 600;
       background: var(--surface-inset); color: var(--muted);
       border: 1px solid var(--border);
     }
@@ -310,16 +325,15 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     .badge.is-warn { color: var(--warn); border-color: rgba(245, 158, 11, 0.28); }
     .badge.is-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.28); }
 
-    /* Details Table */
-    details { margin-bottom: 16px; }
+    /* Details Table inside Antigravity */
+    details { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
     summary {
       display: inline-flex; align-items: center; gap: 6px;
-      cursor: pointer; color: var(--muted); font-size: 0.85rem; font-weight: 500;
-      margin-bottom: 10px;
+      cursor: pointer; color: var(--muted); font-size: 0.83rem; font-weight: 500;
     }
     summary:hover { color: var(--text); }
-    .table-tools { margin-bottom: 8px; }
-    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+    .table-tools { margin: 10px 0 8px; }
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
     tr:last-child td { border-bottom: 0; }
@@ -417,23 +431,30 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     </section>
 
     <section class="pools">
-      ${groupCards || '<div class="card muted" data-i18n="noPoolData">Belum ada data pool kuota.</div>'}
+      <div class="provider-card">
+        <div class="pool-header">
+          <div class="pool-title"><i data-lucide="layers"></i><span>Antigravity</span></div>
+          <span class="badge">${escapeHtml(ag?.plan_tier || 'Active')}</span>
+        </div>
+        <div class="subpools-grid">
+          ${groupCards || '<div class="muted" data-i18n="noPoolData">Belum ada data pool kuota.</div>'}
+        </div>
+        <details>
+          <summary><i data-lucide="list"></i><span><span data-i18n="allModelsTitle">Detail semua model Antigravity</span> (${models.length})</span></summary>
+          <div class="table-tools">
+            <input id="modelFilter" type="search" data-i18n-placeholder="filterPlaceholder" placeholder="Cari model (contoh: claude, gemini, gpt)" style="max-width:300px;padding:7px 10px;" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="colModel">Model</th><th data-i18n="colRemaining">Sisa</th><th data-i18n="colCountdown">Hitung Mundur Reset</th></tr></thead>
+              <tbody>${modelRows || '<tr><td colspan="3" class="muted" data-i18n="noModelData">Belum ada data model.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </details>
+      </div>
       ${copilotCard}
       ${geminiCard}
     </section>
-
-    <details>
-      <summary><i data-lucide="list"></i><span><span data-i18n="allModelsTitle">Detail semua model</span> (${models.length})</span></summary>
-      <div class="table-tools">
-        <input id="modelFilter" type="search" data-i18n-placeholder="filterPlaceholder" placeholder="Cari model (contoh: claude, gemini, gpt)" style="max-width:300px;padding:7px 10px;" />
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th data-i18n="colModel">Model</th><th data-i18n="colRemaining">Sisa</th><th data-i18n="colCountdown">Hitung Mundur Reset</th></tr></thead>
-          <tbody>${modelRows || '<tr><td colspan="3" class="muted" data-i18n="noModelData">Belum ada data model.</td></tr>'}</tbody>
-        </table>
-      </div>
-    </details>
 
     <section class="actions">
       <div class="input-wrap">
@@ -468,7 +489,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         leftWord: 'sisa',
         geminiSession: 'Sesi 5h / Saat ini',
         geminiWeekly: 'Batas Mingguan',
-        allModelsTitle: 'Detail semua model',
+        allModelsTitle: 'Detail semua model Antigravity',
         filterPlaceholder: 'Cari model (contoh: claude, gemini, gpt)',
         colModel: 'Model',
         colRemaining: 'Sisa',
@@ -496,7 +517,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         leftWord: 'left',
         geminiSession: 'Current session (5h)',
         geminiWeekly: 'Weekly limit',
-        allModelsTitle: 'All model details',
+        allModelsTitle: 'All Antigravity model details',
         filterPlaceholder: 'Filter models (e.g. claude, gemini, gpt)',
         colModel: 'Model',
         colRemaining: 'Remaining',
