@@ -103,7 +103,7 @@ npm run deploy
 
 | Method & Path | Auth | Purpose |
 | :--- | :--- | :--- |
-| `GET /` | Public (read-only) | HTML dashboard with quota pools, timers, and manual controls |
+| `GET /` | Public (read-only) | HTML dashboard with quota pools, live reset countdowns, model filter, ID/EN language switch, and manual controls |
 | `GET /health` | Public | Health check (`{"ok":true,"service":"quota-reset-automation"}`) |
 | `GET /api/quota/latest` | `X-Auth-Token` | Latest normalized JSON snapshot from `QUOTA_KV` |
 | `POST /api/quota/sync` | `X-Auth-Token` | Merge external v1 provider snapshots (used by `extension/`) |
@@ -113,8 +113,19 @@ npm run deploy
 ## Chrome extension (`extension/`)
 
 1. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `extension/`.
-2. Open the extension popup, enter your Worker URL and `X-Auth-Token`, click **Simpan Pengaturan**, then **Sync Sekarang**.
-3. While Chrome is open, it reads `gemini.google.com/usage` (English and Indonesian UI) every 15 minutes and posts the result to `/api/quota/sync`.
+2. Open the extension popup, go to the **Pengaturan / Settings** tab, enter your Worker URL and `X-Auth-Token`, then click **Simpan pengaturan / Save settings**.
+3. Back on the **Status** tab, click **Sinkronkan sekarang / Sync now**.
+4. While Chrome is open, it reads `gemini.google.com/usage` (English and Indonesian UI) every 15 minutes and posts the result to `/api/quota/sync`.
+
+What the popup shows:
+
+- **Gemini Web**: 5h session ring with remaining %, a live reset countdown, and the weekly limit bar with its own countdown.
+- **Antigravity**: one row per pool with remaining %, a mini bar, and a live countdown to the 5h reset. Loaded from `GET /api/quota/latest`.
+- **GitHub Copilot**: plan, AI credits left, remaining % bar, and a countdown to the monthly reset. Loaded from `GET /api/quota/latest`.
+- **Footer**: time since the last read and time until the next auto-sync.
+- **Language**: an `ID | EN` switch in the header. The choice is stored in `chrome.storage.local` (`uiLang`). The Worker dashboard has the same switch, stored in `localStorage` (`qra_lang`).
+
+The Antigravity and Copilot cards only appear after the Worker URL and token are saved. The popup bundles `lucide` icons locally in `extension/vendor/` because Manifest V3 blocks remote scripts.
 
 ## Documentation & Tests
 
