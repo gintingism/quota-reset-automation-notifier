@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Web Quota Sync",
+  "version": "1.0.0",
+  "description": "Scrapes gemini.google.com/usage (EN & ID) and syncs to Quota Reset Automation Notifier Worker.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "offscreen",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*",
+    "https://*.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/usage*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

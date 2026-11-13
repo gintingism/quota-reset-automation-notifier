@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { width: 300px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; background: #0b0f17; color: #e5e7eb; }
+    h3 { margin: 0 0 8px; font-size: 14px; }
+    .card { background: #121826; border: 1px solid #1f2937; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 12px; }
+    .row { display: flex; justify-content: space-between; margin: 4px 0; }
+    .muted { color: #9ca3af; font-size: 11px; }
+    input, button { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 7px 9px; border-radius: 6px; border: 1px solid #1f2937; background: #121826; color: #e5e7eb; font-size: 12px; }
+    button { background: #2563eb; border-color: #2563eb; font-weight: 600; cursor: pointer; }
+    button.sec { background: #1f2937; border-color: #374151; }
+  </style>
+</head>
+<body>
+  <h3>Gemini Web Quota Sync</h3>
+  <div class="card">
+    <div class="row"><span>Sesi 5h</span><strong id="daily">—</strong></div>
+    <div class="muted" id="dailyReset">Reset: —</div>
+    <div class="row" style="margin-top:6px;"><span>Mingguan</span><strong id="weekly">—</strong></div>
+    <div class="muted" id="weeklyReset">Reset: —</div>
+    <div class="muted" id="syncStatus" style="margin-top:6px;">Worker sync: —</div>
+  </div>
+  <input id="workerUrl" placeholder="https://....workers.dev" />
+  <input id="authToken" type="password" placeholder="X-Auth-Token" />
+  <button id="saveBtn" class="sec">Simpan Pengaturan</button>
+  <button id="syncBtn">Sync Sekarang</button>
+  <script src="popup.js"></script>
+</body>
+</html>

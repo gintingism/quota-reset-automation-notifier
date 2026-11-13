@@ -30,6 +30,7 @@ Every 5 minutes (`*/5 * * * *` in `wrangler.toml`), Cloudflare's `scheduled()` h
 - `src/copilot.js` — Optional GitHub Copilot quota fetcher
 - `src/dashboard.js` — HTML status page served at `GET /`
 - `scripts/get-refresh-token.mjs` — One-time local OAuth helper to get `ANTIGRAVITY_REFRESH_TOKEN`
+- `extension/` — Optional Chrome extension (`gemini.google.com/usage` scraper for EN/ID) that syncs Gemini Web limits to `/api/quota/sync`
 - `tests/automation.test.js` — Unit tests using `node:test`
 - `wrangler.toml` — Worker bindings, cron schedule, and non-secret config
 

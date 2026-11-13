@@ -32,6 +32,7 @@ function barColor(pct) {
 export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const ag = latest?.providers?.antigravity;
   const copilot = latest?.providers?.github_copilot;
+  const geminiWeb = latest?.providers?.gemini_web;
   const groups = Array.isArray(ag?.groups) ? ag.groups : [];
   const models = Array.isArray(ag?.models) ? ag.models : [];
 
@@ -92,6 +93,32 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${copilot.percent_remaining ?? copilot.quota_percent ?? 0}%;background:${barColor(copilot.percent_remaining ?? copilot.quota_percent ?? 0)}"></div></div>
             <span class="pct">${copilot.percent_remaining ?? copilot.quota_percent ?? '—'}% left</span>
+          </div>
+        </div>
+      </div>`
+    : '';
+
+  const geminiWebCard = geminiWeb
+    ? `<div class="card pool-card">
+        <div class="pool-title">Google Gemini Web <span class="muted">(gemini.google.com · synced via extension)</span></div>
+        <div class="win-row">
+          <div>
+            <div class="win-label">Penggunaan saat ini (5h/session)</div>
+            <div class="muted">${escapeHtml(geminiWeb.daily_reset_label || '—')} · ${geminiWeb.daily_used ?? '—'}% used</div>
+          </div>
+          <div class="win-right">
+            <div class="bar-wrap"><div class="bar" style="width:${100 - (geminiWeb.daily_used ?? 0)}%;background:${barColor(100 - (geminiWeb.daily_used ?? 0))}"></div></div>
+            <span class="pct">${100 - (geminiWeb.daily_used ?? 0)}% left</span>
+          </div>
+        </div>
+        <div class="win-row">
+          <div>
+            <div class="win-label">Batas mingguan</div>
+            <div class="muted">${escapeHtml(geminiWeb.weekly_reset_label || '—')} · ${geminiWeb.weekly_used ?? '—'}% used</div>
+          </div>
+          <div class="win-right">
+            <div class="bar-wrap"><div class="bar" style="width:${100 - (geminiWeb.weekly_used ?? 0)}%;background:${barColor(100 - (geminiWeb.weekly_used ?? 0))}"></div></div>
+            <span class="pct">${100 - (geminiWeb.weekly_used ?? 0)}% left</span>
           </div>
         </div>
       </div>`
@@ -165,6 +192,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     <div class="pools">
       ${groupCards || '<div class="card muted">Belum ada data pool kuota.</div>'}
       ${copilotCard}
+      ${geminiWebCard}
     </div>
 
     <details>

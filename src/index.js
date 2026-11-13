@@ -77,7 +77,11 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
   const dedupState = await loadDedupState(env.QUOTA_KV);
   const wakeState = (env.QUOTA_KV ? await env.QUOTA_KV.get(WAKE_STATE_KEY, 'json') : null) || {};
   wakeState.pools = wakeState.pools || {};
+  const existingLatest = env.QUOTA_KV ? await env.QUOTA_KV.get(LATEST_KEY, 'json') : null;
   const providers = {};
+  if (existingLatest?.providers?.gemini_web) {
+    providers.gemini_web = existingLatest.providers.gemini_web;
+  }
   const summary = { ok: true, wakes: [], wakeDecisions: {}, alerts: [] };
 
   // 1. Antigravity Cloud Code
@@ -332,7 +336,36 @@ export default {
       }
       if (!validSyncPayload(payload)) return jsonResponse({ error: 'Invalid quota payload' }, 422);
       if (env.QUOTA_KV) {
-        await env.QUOTA_KV.put(LATEST_KEY, JSON.stringify(payload));
+        const existing = (await env.QUOTA_KV.get(LATEST_KEY, 'json')) || {
+          version: 1,
+          fetched_at: Math.floor(Date.now() / 1000),
+          providers: {},
+        };
+        const merged = {
+          version: 1,
+          fetched_at: existing.fetched_at || Math.floor(Date.now() / 1000),
+          providers: {
+            ...(existing.providers || {}),
+            ...(payload.providers || {}),
+          },
+        };
+        await env.QUOTA_KV.put(LATEST_KEY, JSON.stringify(merged));
+
+        // Alert on low Gemini Web quota if synced from extension
+        const gw = payload.providers?.gemini_web;
+        const lowThreshold = Number(env.LOW_QUOTA_THRESHOLD ?? 20);
+        if (gw && lowThreshold > 0 && typeof gw.quota_percent === 'number' && gw.quota_percent <= lowThreshold) {
+          const dedupState = await loadDedupState(env.QUOTA_KV);
+          const cycle = gw.daily_reset_label || gw.weekly_reset_label || String(Math.floor(Date.now() / 3600000));
+          const sent = await sendDedupedAlert(
+            env,
+            dedupState,
+            'low:gemini_web',
+            cycle,
+            `⚠️ <b>Low Quota Alert (Gemini Web)</b>\nSisa sesi: <b>${gw.quota_percent}%</b>\nReset: ${gw.daily_reset_label || '—'}`,
+          );
+          if (sent) await saveDedupState(env.QUOTA_KV, dedupState);
+        }
       }
       return jsonResponse({ ok: true });
     }
