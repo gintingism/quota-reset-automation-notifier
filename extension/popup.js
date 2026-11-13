@@ -1,12 +1,81 @@
 const RING_CIRCUMFERENCE = 2 * Math.PI * 28;
 
+const I18N = {
+  id: {
+    tabStatus: 'Status',
+    tabSettings: 'Pengaturan',
+    openDashboard: 'Dashboard',
+    unitLeft: 'sisa',
+    session5hTitle: 'Sesi 5h',
+    weeklyTitle: 'Mingguan',
+    monthlyResetLabel: 'Reset bulanan',
+    btnSyncNow: 'Sinkronkan sekarang',
+    btnSyncing: 'Menyinkronkan...',
+    btnSaveSettings: 'Simpan pengaturan',
+    btnSaved: 'Tersimpan',
+    storageNote: 'Token disimpan lokal di chrome.storage.local',
+    usedWord: 'terpakai',
+    leftWord: 'sisa',
+    resetsInPrefix: 'Reset dalam',
+    resetsAtPrefix: 'Reset pukul',
+    waitingSchedule: 'Menunggu jadwal reset',
+    readyReset: 'Siap reset',
+    readyShort: 'Siap',
+    notSyncedYet: 'Belum disinkronkan',
+    settingsSaved: 'Pengaturan disimpan',
+    justNow: 'baru saja',
+    minAgo: (m) => `${m}m lalu`,
+    hrMinAgo: (h, m) => `${h}j ${m}m lalu`,
+    readPrefix: 'Dibaca',
+    autoSyncIn: (m, s) => `Auto-sync ${m}m ${s}d`,
+    autoSyncActive: 'Auto-sync 15m aktif',
+    copilotCreditsLeft: (rem, ent) => `${rem} / ${ent} AI credits sisa`,
+    copilotCreditsUsed: (used) => `${used} terpakai`,
+  },
+  en: {
+    tabStatus: 'Status',
+    tabSettings: 'Settings',
+    openDashboard: 'Dashboard',
+    unitLeft: 'left',
+    session5hTitle: '5h Session',
+    weeklyTitle: 'Weekly',
+    monthlyResetLabel: 'Monthly reset',
+    btnSyncNow: 'Sync now',
+    btnSyncing: 'Syncing...',
+    btnSaveSettings: 'Save settings',
+    btnSaved: 'Saved',
+    storageNote: 'Token is stored locally in chrome.storage.local',
+    usedWord: 'used',
+    leftWord: 'left',
+    resetsInPrefix: 'Resets in',
+    resetsAtPrefix: 'Resets at',
+    waitingSchedule: 'Waiting for reset schedule',
+    readyReset: 'Ready to reset',
+    readyShort: 'Ready',
+    notSyncedYet: 'Not synced yet',
+    settingsSaved: 'Settings saved',
+    justNow: 'just now',
+    minAgo: (m) => `${m}m ago`,
+    hrMinAgo: (h, m) => `${h}h ${m}m ago`,
+    readPrefix: 'Read',
+    autoSyncIn: (m, s) => `Auto-sync ${m}m ${s}s`,
+    autoSyncActive: '15m auto-sync active',
+    copilotCreditsLeft: (rem, ent) => `${rem} / ${ent} AI credits left`,
+    copilotCreditsUsed: (used) => `${used} used`,
+  },
+};
+
 const state = {
+  lang: 'id',
   dailyResetMs: null,
   weeklyResetMs: null,
   nextAlarmMs: null,
   lastUpdatedIso: null,
-  workerTimers: [],
 };
+
+function t() {
+  return I18N[state.lang] || I18N.id;
+}
 
 function getTone(remainingPct) {
   if (remainingPct <= 20) return { cls: 'is-danger', color: '#ef4444' };
@@ -27,12 +96,13 @@ function pad2(n) {
 function formatCountdown(targetMs) {
   if (!targetMs || !Number.isFinite(targetMs)) return '—';
   const diff = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));
-  if (diff <= 0) return 'Siap reset';
+  if (diff <= 0) return t().readyReset;
   const d = Math.floor(diff / 86400);
   const h = Math.floor((diff % 86400) / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
-  return d > 0 ? `${d}h ${pad2(h)}:${pad2(m)}:${pad2(s)}` : `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+  const dayUnit = state.lang === 'en' ? 'd' : 'h';
+  return d > 0 ? `${d}${dayUnit} ${pad2(h)}:${pad2(m)}:${pad2(s)}` : `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
 
 function formatRelativePast(iso) {
@@ -40,11 +110,11 @@ function formatRelativePast(iso) {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return null;
   const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (sec < 60) return 'baru saja';
+  if (sec < 60) return t().justNow;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m lalu`;
+  if (min < 60) return t().minAgo(min);
   const hr = Math.floor(min / 60);
-  return `${hr}j ${min % 60}m lalu`;
+  return t().hrMinAgo(hr, min % 60);
 }
 
 function parseGeminiLabel(label, kind) {
@@ -100,6 +170,20 @@ function setSyncDot(statusText) {
   }
 }
 
+function applyStaticTranslations() {
+  const dict = t();
+  document.documentElement.lang = state.lang;
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n');
+    if (typeof dict[key] === 'string') {
+      el.textContent = dict[key];
+    }
+  });
+  document.querySelectorAll('.lang-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.lang === state.lang);
+  });
+}
+
 function switchTab(tabName) {
   const statusPanel = document.getElementById('panel-status');
   const settingsPanel = document.getElementById('panel-settings');
@@ -116,11 +200,12 @@ function switchTab(tabName) {
 }
 
 function tickLiveCountdowns() {
+  const dict = t();
   const dailyEl = document.getElementById('dailyCountdown');
   if (dailyEl) {
     dailyEl.textContent = state.dailyResetMs
-      ? `Reset dalam ${formatCountdown(state.dailyResetMs)}`
-      : 'Menunggu jadwal reset';
+      ? `${dict.resetsInPrefix} ${formatCountdown(state.dailyResetMs)}`
+      : dict.waitingSchedule;
   }
 
   const weeklyEl = document.getElementById('weeklyCountdown');
@@ -130,19 +215,19 @@ function tickLiveCountdowns() {
 
   document.querySelectorAll('.overview-timer[data-reset-ms]').forEach((el) => {
     const ms = Number(el.dataset.resetMs);
-    el.textContent = ms > 0 ? formatCountdown(ms) : 'Ready';
+    el.textContent = ms > 0 ? formatCountdown(ms) : dict.readyShort;
   });
 
   const footer = document.getElementById('lastScraped');
   if (footer) {
     const parts = [];
     const relPast = formatRelativePast(state.lastUpdatedIso);
-    if (relPast) parts.push(`Dibaca ${relPast}`);
+    if (relPast) parts.push(`${dict.readPrefix} ${relPast}`);
     if (state.nextAlarmMs && state.nextAlarmMs > Date.now()) {
       const remSec = Math.floor((state.nextAlarmMs - Date.now()) / 1000);
-      parts.push(`Auto-sync ${Math.floor(remSec / 60)}m ${pad2(remSec % 60)}d`);
+      parts.push(dict.autoSyncIn(Math.floor(remSec / 60), pad2(remSec % 60)));
     } else {
-      parts.push('Auto-sync 15m aktif');
+      parts.push(dict.autoSyncActive);
     }
     footer.textContent = parts.join(' · ');
   }
@@ -179,6 +264,7 @@ async function fetchWorkerOverview(workerUrl, authToken) {
     const data = await res.json();
     const ag = data?.providers?.antigravity;
     const copilot = data?.providers?.github_copilot;
+    const dict = t();
 
     const agRows = [];
     if (Array.isArray(ag?.groups)) {
@@ -192,7 +278,7 @@ async function fetchWorkerOverview(workerUrl, authToken) {
           <div class="overview-row">
             <span class="overview-name">${escapeText(g.name)}</span>
             <span class="overview-right">
-              <span class="overview-timer num" data-reset-ms="${Number.isFinite(resetMs) ? resetMs : 0}">${resetMs ? formatCountdown(resetMs) : 'Ready'}</span>
+              <span class="overview-timer num" data-reset-ms="${Number.isFinite(resetMs) ? resetMs : 0}">${resetMs ? formatCountdown(resetMs) : dict.readyShort}</span>
               <span class="mini-bar-wrap"><span class="mini-bar" style="display:block;width:${pct}%;background:${tone.color}"></span></span>
               <span class="badge num ${tone.cls}">${pct}%</span>
             </span>
@@ -216,12 +302,12 @@ async function fetchWorkerOverview(workerUrl, authToken) {
       document.getElementById('copilotPlan').textContent = copilot.plan_tier || 'individual';
       const creditsText =
         copilot.credits_remaining !== undefined && copilot.credits_entitlement !== undefined
-          ? `${copilot.credits_remaining} / ${copilot.credits_entitlement} AI credits sisa`
-          : `${copilot.credits_used ?? 0} terpakai`;
+          ? dict.copilotCreditsLeft(copilot.credits_remaining, copilot.credits_entitlement)
+          : dict.copilotCreditsUsed(copilot.credits_used ?? 0);
       document.getElementById('copilotCredits').textContent = creditsText;
 
       const pctBadge = document.getElementById('copilotPctBadge');
-      pctBadge.textContent = `${pct}% sisa`;
+      pctBadge.textContent = `${pct}% ${dict.leftWord}`;
       pctBadge.className = `badge num ${tone.cls}`;
 
       const bar = document.getElementById('copilotBar');
@@ -254,8 +340,12 @@ function refreshAlarmSchedule() {
 
 function render() {
   chrome.storage.local.get(
-    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync'],
-    ({ geminiUsage, workerUrl, authToken, lastWorkerSync }) => {
+    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync', 'uiLang'],
+    ({ geminiUsage, workerUrl, authToken, lastWorkerSync, uiLang }) => {
+      state.lang = uiLang === 'en' ? 'en' : 'id';
+      applyStaticTranslations();
+      const dict = t();
+
       const workerInput = document.getElementById('workerUrl');
       const tokenInput = document.getElementById('authToken');
       const openWorkerBtn = document.getElementById('openWorkerBtn');
@@ -276,7 +366,7 @@ function render() {
 
         document.getElementById('daily').textContent = `${dailyRemaining}%`;
         const dailyBadge = document.getElementById('dailyBadge');
-        dailyBadge.textContent = `${dailyUsed}% used`;
+        dailyBadge.textContent = `${dailyUsed}% ${dict.usedWord}`;
         dailyBadge.className = `badge num ${dailyTone.cls}`;
 
         const dailyRing = document.getElementById('dailyRing');
@@ -285,14 +375,14 @@ function render() {
         dailyRing.style.strokeDashoffset = `${offset.toFixed(2)}`;
         dailyRing.style.stroke = dailyTone.color;
 
-        document.getElementById('dailyReset').textContent = `Reset pukul ${geminiUsage.dailyReset || '—'}`;
+        document.getElementById('dailyReset').textContent = `${dict.resetsAtPrefix} ${geminiUsage.dailyReset || '—'}`;
         state.dailyResetMs = parseGeminiLabel(geminiUsage.dailyReset, 'daily');
 
         const weeklyUsed = clampPct(geminiUsage.weeklyUsed);
         const weeklyRemaining = 100 - weeklyUsed;
         const weeklyTone = getTone(weeklyRemaining);
 
-        document.getElementById('weekly').textContent = `${weeklyRemaining}% sisa (${weeklyUsed}% used)`;
+        document.getElementById('weekly').textContent = `${weeklyRemaining}% ${dict.leftWord} (${weeklyUsed}% ${dict.usedWord})`;
         const weeklyBar = document.getElementById('weeklyBar');
         weeklyBar.style.width = `${weeklyRemaining}%`;
         weeklyBar.style.backgroundColor = weeklyTone.color;
@@ -302,7 +392,7 @@ function render() {
         state.lastUpdatedIso = geminiUsage.lastUpdated || null;
       }
 
-      const syncLabel = lastWorkerSync || 'Belum disinkronkan';
+      const syncLabel = lastWorkerSync || dict.notSyncedYet;
       document.getElementById('syncStatus').textContent = `Worker: ${syncLabel}`;
       setSyncDot(lastWorkerSync);
 
@@ -312,6 +402,13 @@ function render() {
   );
   refreshAlarmSchedule();
 }
+
+document.querySelectorAll('.lang-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const nextLang = btn.dataset.lang === 'en' ? 'en' : 'id';
+    chrome.storage.local.set({ uiLang: nextLang }, render);
+  });
+});
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -330,13 +427,14 @@ document.getElementById('saveBtn').addEventListener('click', () => {
   const workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
   const authToken = document.getElementById('authToken').value.trim();
   const label = document.getElementById('saveBtnLabel');
+  const dict = t();
 
   chrome.storage.local.set({ workerUrl, authToken }, () => {
-    label.textContent = 'Tersimpan';
-    document.getElementById('syncStatus').textContent = 'Worker: Pengaturan disimpan';
+    label.textContent = dict.btnSaved;
+    document.getElementById('syncStatus').textContent = `Worker: ${dict.settingsSaved}`;
     setSyncDot('ok');
     setTimeout(() => {
-      label.textContent = 'Simpan Pengaturan';
+      label.textContent = t().btnSaveSettings;
       switchTab('status');
       render();
     }, 700);
@@ -347,18 +445,19 @@ document.getElementById('syncBtn').addEventListener('click', () => {
   const syncBtn = document.getElementById('syncBtn');
   const label = document.getElementById('syncBtnLabel');
   const icon = syncBtn.querySelector('svg, i');
+  const dict = t();
 
   syncBtn.disabled = true;
-  label.textContent = 'Menyinkronkan...';
+  label.textContent = dict.btnSyncing;
   if (icon) icon.classList.add('spin');
 
-  document.getElementById('syncStatus').textContent = 'Worker: Syncing...';
+  document.getElementById('syncStatus').textContent = `Worker: ${dict.btnSyncing}`;
   setSyncDot('syncing');
   chrome.runtime.sendMessage({ action: 'START_SYNC' });
 
   setTimeout(() => {
     syncBtn.disabled = false;
-    label.textContent = 'Sync Sekarang';
+    label.textContent = t().btnSyncNow;
     const currentIcon = syncBtn.querySelector('svg, i');
     if (currentIcon) currentIcon.classList.remove('spin');
     render();

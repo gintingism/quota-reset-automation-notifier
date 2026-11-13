@@ -55,7 +55,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const fetchedMs = latest?.fetched_at ? latest.fetched_at * 1000 : null;
   const updatedAt = fetchedMs
     ? new Date(fetchedMs + offsetHours * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19) + ` UTC+${offsetHours}`
-    : 'Belum ada data';
+    : '';
 
   const agResetMs = toEpochMs(ag?.rolling_reset_at);
 
@@ -72,8 +72,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
                 <div class="muted num">
                   ${
                     resetMs
-                      ? `Reset dalam <span class="countdown" data-reset-ms="${resetMs}">${escapeHtml(formatReset(w.reset_at, offsetHours).split(' (')[0])}</span> · ${escapeHtml(formatLocalTime(resetMs, offsetHours))}`
-                      : 'Ready / 100% penuh'
+                      ? `<span data-i18n="resetsIn">Reset dalam</span> <span class="countdown" data-reset-ms="${resetMs}">${escapeHtml(formatReset(w.reset_at, offsetHours).split(' (')[0])}</span> · ${escapeHtml(formatLocalTime(resetMs, offsetHours))}`
+                      : `<span data-i18n="readyFull">Siap / 100% penuh</span>`
                   }
                 </div>
               </div>
@@ -130,11 +130,11 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         </div>
         <div class="win-row">
           <div class="win-info">
-            <div class="win-label">AI Credits (bulanan)</div>
+            <div class="win-label" data-i18n="copilotMonthly">AI Credits (bulanan)</div>
             <div class="muted num">${
               copilot.error
                 ? escapeHtml(copilot.error)
-                : `${copilot.credits_used ?? '—'} terpakai · ${copilot.credits_remaining ?? '—'} / ${copilot.credits_entitlement ?? '—'} sisa · Reset dalam <span class="countdown" data-reset-ms="${copilotResetMs || ''}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
+                : `${copilot.credits_used ?? '—'} <span data-i18n="usedWord">terpakai</span> · ${copilot.credits_remaining ?? '—'} / ${copilot.credits_entitlement ?? '—'} <span data-i18n="leftWord">sisa</span> · <span data-i18n="resetsIn">Reset dalam</span> <span class="countdown" data-reset-ms="${copilotResetMs || ''}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
             }</div>
           </div>
           <div class="win-right">
@@ -155,8 +155,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         </div>
         <div class="win-row">
           <div class="win-info">
-            <div class="win-label">Sesi 5h / Saat ini</div>
-            <div class="muted num">Reset: ${escapeHtml(geminiWeb.daily_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span> · ${geminiWeb.daily_used ?? '—'}% used</div>
+            <div class="win-label" data-i18n="geminiSession">Sesi 5h / Saat ini</div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.daily_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span> · ${geminiWeb.daily_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiDailyLeft}%;background:${barColor(geminiDailyLeft)}"></div></div>
@@ -165,8 +165,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         </div>
         <div class="win-row">
           <div class="win-info">
-            <div class="win-label">Batas Mingguan</div>
-            <div class="muted num">Reset: ${escapeHtml(geminiWeb.weekly_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span> · ${geminiWeb.weekly_used ?? '—'}% used</div>
+            <div class="win-label" data-i18n="geminiWeekly">Batas Mingguan</div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.weekly_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span> · ${geminiWeb.weekly_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiWeeklyLeft}%;background:${barColor(geminiWeeklyLeft)}"></div></div>
@@ -177,8 +177,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     : '';
 
   const lastWake = wakeState?.lastWakeResult
-    ? `<strong>${escapeHtml(wakeState.lastWakeResult.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeState.lastWakeResult.triggeredAt)}">${escapeHtml(wakeState.lastWakeResult.triggeredAt)}</span><br><span class="muted">Balasan: "${escapeHtml(wakeState.lastWakeResult.reply)}"</span>`
-    : '<span class="muted">Belum ada riwayat auto-wake</span>';
+    ? `<strong>${escapeHtml(wakeState.lastWakeResult.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeState.lastWakeResult.triggeredAt)}">${escapeHtml(wakeState.lastWakeResult.triggeredAt)}</span><br><span class="muted"><span data-i18n="replyLabel">Balasan</span>: "${escapeHtml(wakeState.lastWakeResult.reply)}"</span>`
+    : `<span class="muted" data-i18n="noWakeYet">Belum ada riwayat auto-wake</span>`;
 
   return `<!doctype html>
 <html lang="id">
@@ -237,16 +237,41 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     }
     h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
     .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.82rem; color: var(--muted); }
+    .top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 4px 9px;
-      border-radius: 6px;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px;
+      border-radius: 8px;
       background: var(--surface);
       border: 1px solid var(--border);
       font-size: 0.78rem;
       color: var(--muted);
     }
     .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); }
+
+    /* Language Switch */
+    .lang-switch {
+      display: inline-flex;
+      padding: 3px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      gap: 2px;
+    }
+    .lang-btn {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 150ms var(--ease);
+    }
+    .lang-btn:hover { color: var(--text); }
+    .lang-btn.is-active { background: var(--surface-inset); color: var(--text); }
+    .lang-btn:active { transform: scale(0.96); }
 
     /* Summary Grid */
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -352,21 +377,27 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           <div class="subline">
             <span>Tier: <strong>${escapeHtml(ag?.plan_tier || '—')}</strong></span>
             <span>·</span>
-            <span class="num">Sync: ${escapeHtml(updatedAt)}</span>
+            <span class="num"><span data-i18n="lastSyncLabel">Sinkronisasi</span>: ${updatedAt ? escapeHtml(updatedAt) : '<span data-i18n="noDataYet">Belum ada data</span>'}</span>
           </div>
         </div>
       </div>
-      <div class="pill num">
-        <span class="dot"></span>
-        <span>Cron berikutnya: <strong id="nextCron">--:--</strong></span>
+      <div class="top-right">
+        <div class="pill num">
+          <span class="dot"></span>
+          <span><span data-i18n="nextCronLabel">Cron berikutnya</span>: <strong id="nextCron">--:--</strong></span>
+        </div>
+        <div class="lang-switch" role="group" aria-label="Pilih bahasa / Select language">
+          <button type="button" class="lang-btn is-active" data-lang="id">ID</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
       </div>
     </header>
 
     <section class="grid">
       <div class="card">
         <div class="kpi-label"><i data-lucide="timer"></i><span>Antigravity 5h Reset</span></div>
-        <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : 'Ready / —'}</div>
-        <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : 'Menunggu siklus berikutnya'}</div>
+        <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : '—'}</div>
+        <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : '<span data-i18n="waitingNextCycle">Menunggu siklus berikutnya</span>'}</div>
       </div>
       <div class="card">
         <div class="kpi-label"><i data-lucide="cpu"></i><span>GitHub Copilot</span></div>
@@ -375,42 +406,42 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           copilot?.error
             ? escapeHtml(copilot.error)
             : copilotResetMs
-              ? `Reset <span class="countdown" data-reset-ms="${copilotResetMs}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
-              : 'Tidak aktif'
+              ? `<span data-i18n="resetsIn">Reset dalam</span> <span class="countdown" data-reset-ms="${copilotResetMs}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
+              : `<span data-i18n="inactive">Tidak aktif</span>`
         }</div>
       </div>
       <div class="card">
-        <div class="kpi-label"><i data-lucide="zap"></i><span>Auto-Wake Terakhir</span></div>
+        <div class="kpi-label"><i data-lucide="zap"></i><span data-i18n="lastWakeTitle">Auto-Wake Terakhir</span></div>
         <div style="font-size:0.86rem;margin-top:8px;">${lastWake}</div>
       </div>
     </section>
 
     <section class="pools">
-      ${groupCards || '<div class="card muted">Belum ada data pool kuota.</div>'}
+      ${groupCards || '<div class="card muted" data-i18n="noPoolData">Belum ada data pool kuota.</div>'}
       ${copilotCard}
       ${geminiCard}
     </section>
 
     <details>
-      <summary><i data-lucide="list"></i><span>Detail Semua Model (${models.length})</span></summary>
+      <summary><i data-lucide="list"></i><span><span data-i18n="allModelsTitle">Detail semua model</span> (${models.length})</span></summary>
       <div class="table-tools">
-        <input id="modelFilter" type="search" placeholder="Filter model (misal: claude, gemini, gpt)..." style="max-width:300px;padding:7px 10px;" />
+        <input id="modelFilter" type="search" data-i18n-placeholder="filterPlaceholder" placeholder="Cari model (contoh: claude, gemini, gpt)" style="max-width:300px;padding:7px 10px;" />
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Model</th><th>Remaining</th><th>Reset Countdown</th></tr></thead>
-          <tbody>${modelRows || '<tr><td colspan="3" class="muted">Belum ada data model.</td></tr>'}</tbody>
+          <thead><tr><th data-i18n="colModel">Model</th><th data-i18n="colRemaining">Sisa</th><th data-i18n="colCountdown">Hitung Mundur Reset</th></tr></thead>
+          <tbody>${modelRows || '<tr><td colspan="3" class="muted" data-i18n="noModelData">Belum ada data model.</td></tr>'}</tbody>
         </table>
       </div>
     </details>
 
     <section class="actions">
       <div class="input-wrap">
-        <input id="tok" type="password" placeholder="X-Auth-Token" autocomplete="off" />
+        <input id="tok" type="password" data-i18n-placeholder="tokenPlaceholder" placeholder="Contoh: qra-9f4a2c8e..." aria-label="X-Auth-Token" autocomplete="off" />
         <button id="toggleTok" type="button" class="eye-btn" title="Tampilkan token"><i data-lucide="eye"></i></button>
       </div>
-      <button class="btn" type="button" onclick="callApi('/api/automation/tick')"><i data-lucide="refresh-cw"></i><span>Run Sync Tick</span></button>
-      <button class="btn sec" type="button" onclick="callApi('/api/automation/wake')"><i data-lucide="zap"></i><span>Force Wake Now</span></button>
+      <button class="btn" type="button" onclick="callApi('/api/automation/tick')"><i data-lucide="refresh-cw"></i><span data-i18n="btnSyncTick">Jalankan sinkronisasi</span></button>
+      <button class="btn sec" type="button" onclick="callApi('/api/automation/wake')"><i data-lucide="zap"></i><span data-i18n="btnForceWake">Kirim wake sekarang</span></button>
     </section>
     <pre id="out"></pre>
   </div>
@@ -419,9 +450,97 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   <script>
     if (window.lucide) window.lucide.createIcons();
 
+    const I18N = {
+      id: {
+        lastSyncLabel: 'Sinkronisasi',
+        noDataYet: 'Belum ada data',
+        nextCronLabel: 'Cron berikutnya',
+        waitingNextCycle: 'Menunggu siklus berikutnya',
+        resetsIn: 'Reset dalam',
+        readyFull: 'Siap / 100% penuh',
+        inactive: 'Tidak aktif',
+        lastWakeTitle: 'Auto-Wake Terakhir',
+        replyLabel: 'Balasan',
+        noWakeYet: 'Belum ada riwayat auto-wake',
+        noPoolData: 'Belum ada data pool kuota.',
+        copilotMonthly: 'AI Credits (bulanan)',
+        usedWord: 'terpakai',
+        leftWord: 'sisa',
+        geminiSession: 'Sesi 5h / Saat ini',
+        geminiWeekly: 'Batas Mingguan',
+        allModelsTitle: 'Detail semua model',
+        filterPlaceholder: 'Cari model (contoh: claude, gemini, gpt)',
+        colModel: 'Model',
+        colRemaining: 'Sisa',
+        colCountdown: 'Hitung Mundur Reset',
+        noModelData: 'Belum ada data model.',
+        tokenPlaceholder: 'X-Auth-Token (contoh: qra-9f4a...)',
+        btnSyncTick: 'Jalankan sinkronisasi',
+        btnForceWake: 'Kirim wake sekarang',
+        readyNow: '00:00:00 (siap)',
+      },
+      en: {
+        lastSyncLabel: 'Last sync',
+        noDataYet: 'No data yet',
+        nextCronLabel: 'Next cron',
+        waitingNextCycle: 'Waiting for next cycle',
+        resetsIn: 'Resets in',
+        readyFull: 'Ready / 100% full',
+        inactive: 'Inactive',
+        lastWakeTitle: 'Last Auto-Wake',
+        replyLabel: 'Reply',
+        noWakeYet: 'No auto-wake recorded yet',
+        noPoolData: 'No quota pool data yet.',
+        copilotMonthly: 'AI Credits (monthly)',
+        usedWord: 'used',
+        leftWord: 'left',
+        geminiSession: 'Current session (5h)',
+        geminiWeekly: 'Weekly limit',
+        allModelsTitle: 'All model details',
+        filterPlaceholder: 'Filter models (e.g. claude, gemini, gpt)',
+        colModel: 'Model',
+        colRemaining: 'Remaining',
+        colCountdown: 'Reset Countdown',
+        noModelData: 'No model data yet.',
+        tokenPlaceholder: 'X-Auth-Token (e.g. qra-9f4a...)',
+        btnSyncTick: 'Run sync tick',
+        btnForceWake: 'Trigger wake now',
+        readyNow: '00:00:00 (ready)',
+      },
+    };
+
+    let currentLang = localStorage.getItem('qra_lang') === 'en' ? 'en' : 'id';
+
+    function applyLanguage(lang) {
+      currentLang = lang === 'en' ? 'en' : 'id';
+      localStorage.setItem('qra_lang', currentLang);
+      document.documentElement.lang = currentLang;
+      const dict = I18N[currentLang];
+
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+
+      document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (dict[key]) el.placeholder = dict[key];
+      });
+
+      document.querySelectorAll('.lang-btn').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.lang === currentLang);
+      });
+
+      tickTimers();
+    }
+
+    document.querySelectorAll('.lang-btn').forEach((btn) => {
+      btn.addEventListener('click', () => applyLanguage(btn.dataset.lang));
+    });
+
     function formatCountdown(targetMs) {
       const diff = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));
-      if (diff <= 0) return '00:00:00 (siap)';
+      if (diff <= 0) return I18N[currentLang].readyNow;
       const d = Math.floor(diff / 86400);
       const h = Math.floor((diff % 86400) / 3600);
       const m = Math.floor((diff % 3600) / 60);
@@ -480,7 +599,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       if (cronEl) cronEl.textContent = m + ':' + s;
     }
 
-    tickTimers();
+    applyLanguage(currentLang);
     setInterval(tickTimers, 1000);
 
     const filterInput = document.getElementById('modelFilter');

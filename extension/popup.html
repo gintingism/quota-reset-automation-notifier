@@ -16,19 +16,25 @@
         <div class="brand-sub">gemini.google.com/usage</div>
       </div>
     </div>
-    <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka halaman usage">
-      <i data-lucide="external-link"></i>
-    </a>
+    <div class="header-actions">
+      <div class="lang-switch" role="group" aria-label="Pilih bahasa / Select language">
+        <button type="button" class="lang-btn is-active" data-lang="id">ID</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka gemini.google.com/usage">
+        <i data-lucide="external-link"></i>
+      </a>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Tampilan">
     <button type="button" class="tab-btn is-active" data-tab="status" role="tab" aria-selected="true">
       <i data-lucide="activity"></i>
-      <span>Status</span>
+      <span data-i18n="tabStatus">Status</span>
     </button>
     <button type="button" class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
       <i data-lucide="sliders-horizontal"></i>
-      <span>Pengaturan</span>
+      <span data-i18n="tabSettings">Pengaturan</span>
     </button>
   </nav>
 
@@ -39,7 +45,7 @@
         <span id="syncStatus" class="status-text num">Worker: —</span>
       </div>
       <a id="openWorkerBtn" class="link-btn" href="#" target="_blank" rel="noreferrer" hidden>
-        <span>Dashboard</span>
+        <span data-i18n="openDashboard">Dashboard</span>
         <i data-lucide="arrow-up-right"></i>
       </a>
     </div>
@@ -52,14 +58,14 @@
         </svg>
         <div class="ring-center">
           <span id="daily" class="ring-pct num">—</span>
-          <span class="ring-unit">sisa</span>
+          <span class="ring-unit" data-i18n="unitLeft">sisa</span>
         </div>
       </div>
       <div class="card-meta">
         <div class="card-label-row">
           <span class="card-title">
             <i data-lucide="gauge"></i>
-            <span>Sesi 5h</span>
+            <span data-i18n="session5hTitle">Sesi 5h</span>
           </span>
           <span id="dailyBadge" class="badge num">—</span>
         </div>
@@ -75,7 +81,7 @@
       <div class="bar-header">
         <span class="card-title">
           <i data-lucide="calendar-days"></i>
-          <span>Mingguan</span>
+          <span data-i18n="weeklyTitle">Mingguan</span>
         </span>
         <span id="weekly" class="bar-value num">—</span>
       </div>
@@ -120,7 +126,7 @@
       <div class="split-meta">
         <div class="meta-line">
           <i data-lucide="clock"></i>
-          <span>Reset bulanan</span>
+          <span data-i18n="monthlyResetLabel">Reset bulanan</span>
         </div>
         <span id="copilotCountdown" class="badge num overview-timer">—</span>
       </div>
@@ -128,10 +134,10 @@
 
     <button id="syncBtn" type="button" class="btn btn-primary">
       <i data-lucide="refresh-cw" id="syncIcon"></i>
-      <span id="syncBtnLabel">Sync Sekarang</span>
+      <span id="syncBtnLabel" data-i18n="btnSyncNow">Sinkronkan sekarang</span>
     </button>
 
-    <div id="lastScraped" class="footer-note num">Auto-sync tiap 15 menit saat Chrome terbuka</div>
+    <div id="lastScraped" class="footer-note num">Auto-sync 15m aktif</div>
   </main>
 
   <section id="panel-settings" class="panel" role="tabpanel" hidden>
@@ -146,7 +152,7 @@
       <div class="field">
         <label class="field-label" for="authToken">X-Auth-Token</label>
         <div class="input-wrap">
-          <input id="authToken" class="input has-trailing" type="password" placeholder="Masukkan AUTH_TOKEN" autocomplete="off" />
+          <input id="authToken" class="input has-trailing" type="password" placeholder="e.g. qra-9f4a2c8e..." autocomplete="off" />
           <button id="toggleTokenBtn" type="button" class="input-toggle" title="Tampilkan atau sembunyikan token" aria-label="Tampilkan token">
             <i data-lucide="eye"></i>
           </button>
@@ -155,11 +161,11 @@
 
       <button id="saveBtn" type="button" class="btn btn-secondary">
         <i data-lucide="save"></i>
-        <span id="saveBtnLabel">Simpan Pengaturan</span>
+        <span id="saveBtnLabel" data-i18n="btnSaveSettings">Simpan pengaturan</span>
       </button>
     </div>
 
-    <div class="footer-note">Token disimpan lokal di <code>chrome.storage.local</code></div>
+    <div class="footer-note" data-i18n="storageNote">Token disimpan lokal di chrome.storage.local</div>
   </section>
 
   <script src="vendor/lucide.min.js"></script>
