@@ -1,9 +1,24 @@
 {
-  "name": "quota-reset-automation-notifier",
+  "name": "@gintingism/quota-reset-automation-notifier",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
+  "license": "GPL-3.0",
   "description": "24/7 Cloudflare Workers automation for Antigravity & Copilot quota monitoring, auto-wake on reset, and Telegram/Discord notifications.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gintingism/quota-reset-automation-notifier.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "extension/",
+    "wrangler.toml",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
