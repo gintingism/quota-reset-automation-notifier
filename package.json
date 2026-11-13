@@ -1,6 +1,6 @@
 {
   "name": "@gintingism/quota-reset-automation-notifier",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "license": "GPL-3.0",
   "description": "24/7 Cloudflare Workers automation for Antigravity & Copilot quota monitoring, auto-wake on reset, and Telegram/Discord notifications.",

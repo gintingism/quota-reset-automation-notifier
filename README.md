@@ -103,7 +103,7 @@ npm run deploy
 
 | Method & Path | Auth | Purpose |
 | :--- | :--- | :--- |
-| `GET /` | Public (read-only) | HTML dashboard with quota pools, live reset countdowns, model filter, ID/EN language switch, and manual controls |
+| `GET /` | Public (read-only) | Categorized HTML dashboard (`Antigravity`, `GitHub Copilot`, `Google Gemini Web`) with brand logos, live reset countdowns, model filter, `ID \| EN` language switch, and manual controls |
 | `GET /health` | Public | Health check (`{"ok":true,"service":"quota-reset-automation"}`) |
 | `GET /api/quota/latest` | `X-Auth-Token` | Latest normalized JSON snapshot from `QUOTA_KV` |
 | `POST /api/quota/sync` | `X-Auth-Token` | Merge external v1 provider snapshots (used by `extension/`) |
@@ -112,25 +112,28 @@ npm run deploy
 
 ## Chrome extension (`extension/`)
 
-1. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `extension/`.
-2. Open the extension popup, go to the **Pengaturan / Settings** tab, enter your Worker URL and `X-Auth-Token`, then click **Simpan pengaturan / Save settings**.
-3. Back on the **Status** tab, click **Sinkronkan sekarang / Sync now**.
-4. While Chrome is open, it reads `gemini.google.com/usage` (English and Indonesian UI) every 15 minutes and posts the result to `/api/quota/sync`.
+1. Download `gemini-quota-sync-extension-v*.zip` from [GitHub Releases](https://github.com/gintingism/quota-reset-automation-notifier/releases) and extract it (or use the `extension/` folder from a local clone).
+2. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the extracted folder (or `extension/`).
+3. Open the extension popup, go to the **Pengaturan / Settings** tab, enter your Worker URL and `X-Auth-Token`, then click **Simpan pengaturan / Save settings**.
+4. Back on the **Status** tab, click **Sinkronkan sekarang / Sync now**.
+5. While Chrome is open, it reads `gemini.google.com/usage` (English and Indonesian UI) every 15 minutes and posts the result to `/api/quota/sync`.
 
 What the popup shows:
 
 - **Gemini Web**: 5h session ring with remaining %, a live reset countdown, and the weekly limit bar with its own countdown.
-- **Antigravity**: one row per pool with remaining %, a mini bar, and a live countdown to the 5h reset. Loaded from `GET /api/quota/latest`.
-- **GitHub Copilot**: plan, AI credits left, remaining % bar, and a countdown to the monthly reset. Loaded from `GET /api/quota/latest`.
+- **Antigravity**: dedicated card with the Antigravity mark, plan tier badge, one row per pool (`Gemini Models`, `Claude and GPT`, `Gemini 4 Argon`), remaining %, mini bar, and live 5h reset countdown. Loaded from `GET /api/quota/latest`.
+- **GitHub Copilot**: dedicated card with the GitHub mark, plan tier, AI credits left, remaining % bar, and monthly reset countdown. Loaded from `GET /api/quota/latest`.
 - **Footer**: time since the last read and time until the next auto-sync.
 - **Language**: an `ID | EN` switch in the header. The choice is stored in `chrome.storage.local` (`uiLang`). The Worker dashboard has the same switch, stored in `localStorage` (`qra_lang`).
 
 The Antigravity and Copilot cards only appear after the Worker URL and token are saved. The popup bundles `lucide` icons locally in `extension/vendor/` because Manifest V3 blocks remote scripts.
 
-## Documentation & Tests
+## Documentation, Wiki & Releases
 
 - [Architecture](docs/Architecture.md)
 - [Setup and Secrets](docs/Setup-and-Secrets.md)
+- [Project Wiki](https://github.com/gintingism/quota-reset-automation-notifier/wiki) (Architecture, Setup, Chrome Extension, Troubleshooting)
+- [GitHub Releases](https://github.com/gintingism/quota-reset-automation-notifier/releases) (packaged Chrome extension `.zip` builds)
 - Run unit tests locally:
 
 ```powershell
