@@ -118,7 +118,8 @@ npm run deploy
 
 ## Documentation & Tests
 
-- More details are in the [GitHub Wiki](https://github.com/gintingism/quota-reset-automation-notifier/wiki).
+- [Architecture](docs/Architecture.md)
+- [Setup and Secrets](docs/Setup-and-Secrets.md)
 - Run unit tests locally:
 
 ```powershell
