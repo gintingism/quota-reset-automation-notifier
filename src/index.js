@@ -150,7 +150,7 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         if (decision.shouldTrigger) {
           const wakeResult = await triggerAutoWake(accessToken, projectInfo.projectId, {
             model: modelId,
-            prompt: env.WAKE_PROMPT || 'hi',
+            prompt: env.WAKE_PROMPT || '1+1',
             maxOutputTokens: env.WAKE_MAX_OUTPUT_TOKENS || 16,
           });
           wakeResult.pool = group.name;

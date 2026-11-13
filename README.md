@@ -86,7 +86,7 @@ Every 5 minutes (`*/5 * * * *` in `wrangler.toml`), Cloudflare's `scheduled()` h
 - `AUTO_WAKE_ENABLED` — `"true"` or `"false"`
 - `WAKE_GEMINI_MODEL` — Default `"gemini-3-flash"`
 - `WAKE_CLAUDE_MODEL` — Default `"claude-sonnet-5-5-medium"`
-- `WAKE_PROMPT` — Prompt text sent on wake (default `"hi"`)
+- `WAKE_PROMPT` — Prompt text sent on wake (default `"1+1"`)
 - `WAKE_MAX_OUTPUT_TOKENS` — Output token cap for wake requests (default `"16"`)
 - `WAKE_TIME_WINDOW` — Optional local time window like `"07:00-23:00"`, or `""` for 24/7
 - `TIMEZONE_OFFSET_HOURS` — Offset from UTC (default `"7"` for WIB / UTC+7)

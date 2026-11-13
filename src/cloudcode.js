@@ -328,7 +328,7 @@ export async function fetchAntigravityQuota(accessToken, projectInfo) {
  */
 export async function triggerAutoWake(accessToken, projectId, options = {}) {
   const model = options.model || 'gemini-3-flash';
-  const prompt = options.prompt || 'hi';
+  const prompt = options.prompt || '1+1';
   const maxOutputTokens = Number(options.maxOutputTokens) || 16;
 
   const ts = Date.now();

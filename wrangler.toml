@@ -15,7 +15,7 @@ id = "822b870f7d264166a58c1f6d2d72e68e"
 AUTO_WAKE_ENABLED = "true"
 WAKE_GEMINI_MODEL = "gemini-3-flash"
 WAKE_CLAUDE_MODEL = "claude-sonnet-5-5-medium"
-WAKE_PROMPT = "hi"
+WAKE_PROMPT = "1+1"
 WAKE_MAX_OUTPUT_TOKENS = "16"
 # Optional active window in local timezone (e.g. "07:00-23:00"); leave empty for 24/7
 WAKE_TIME_WINDOW = ""
