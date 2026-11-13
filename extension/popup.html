@@ -36,7 +36,7 @@
     <div class="status-bar">
       <div class="status-pill">
         <span id="syncDot" class="dot"></span>
-        <span id="syncStatus" class="status-text num">Worker sync: —</span>
+        <span id="syncStatus" class="status-text num">Worker: —</span>
       </div>
       <a id="openWorkerBtn" class="link-btn" href="#" target="_blank" rel="noreferrer" hidden>
         <span>Dashboard</span>
@@ -63,6 +63,7 @@
           </span>
           <span id="dailyBadge" class="badge num">—</span>
         </div>
+        <div id="dailyCountdown" class="countdown-val num">—</div>
         <div class="meta-line">
           <i data-lucide="clock"></i>
           <span id="dailyReset" class="num">Reset: —</span>
@@ -81,10 +82,24 @@
       <div class="bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
         <div id="weeklyBar" class="bar-fill"></div>
       </div>
-      <div class="meta-line">
-        <i data-lucide="clock"></i>
-        <span id="weeklyReset" class="num">Reset: —</span>
+      <div class="split-meta">
+        <div class="meta-line">
+          <i data-lucide="clock"></i>
+          <span id="weeklyReset" class="num">Reset: —</span>
+        </div>
+        <span id="weeklyCountdown" class="badge num">—</span>
       </div>
+    </section>
+
+    <section id="workerOverview" class="card" aria-label="Worker Overview" hidden>
+      <div class="overview-header">
+        <span class="card-title">
+          <i data-lucide="server"></i>
+          <span>Antigravity &amp; Copilot</span>
+        </span>
+        <span id="workerTier" class="badge num">—</span>
+      </div>
+      <div id="workerRows"></div>
     </section>
 
     <button id="syncBtn" type="button" class="btn btn-primary">

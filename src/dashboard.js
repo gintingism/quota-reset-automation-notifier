@@ -10,10 +10,15 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function formatReset(isoOrEpoch, offsetHours = 7) {
-  if (!isoOrEpoch) return '—';
+function toEpochMs(isoOrEpoch) {
+  if (!isoOrEpoch) return null;
   const ms = typeof isoOrEpoch === 'number' ? isoOrEpoch * 1000 : Date.parse(isoOrEpoch);
-  if (!Number.isFinite(ms)) return '—';
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function formatReset(isoOrEpoch, offsetHours = 7) {
+  const ms = toEpochMs(isoOrEpoch);
+  if (ms === null) return '—';
   const diffMin = Math.max(0, Math.round((ms - Date.now()) / 60000));
   const d = Math.floor(diffMin / 1440);
   const h = Math.floor((diffMin % 1440) / 60);
@@ -23,10 +28,21 @@ function formatReset(isoOrEpoch, offsetHours = 7) {
   return `${rel} (${local} UTC+${offsetHours})`;
 }
 
+function formatLocalTime(ms, offsetHours = 7) {
+  if (!ms) return '—';
+  return new Date(ms + offsetHours * 3600 * 1000).toISOString().replace('T', ' ').slice(5, 16) + ` UTC+${offsetHours}`;
+}
+
 function barColor(pct) {
   if (pct <= 20) return '#ef4444';
-  if (pct <= 50) return '#f59e0b';
+  if (pct <= 49) return '#f59e0b';
   return '#10b981';
+}
+
+function toneClass(pct) {
+  if (pct <= 20) return 'is-danger';
+  if (pct <= 49) return 'is-warn';
+  return 'is-ok';
 }
 
 export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
@@ -36,20 +52,34 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const groups = Array.isArray(ag?.groups) ? ag.groups : [];
   const models = Array.isArray(ag?.models) ? ag.models : [];
 
+  const fetchedMs = latest?.fetched_at ? latest.fetched_at * 1000 : null;
+  const updatedAt = fetchedMs
+    ? new Date(fetchedMs + offsetHours * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19) + ` UTC+${offsetHours}`
+    : 'Belum ada data';
+
+  const agResetMs = toEpochMs(ag?.rolling_reset_at);
+
   const groupCards = groups
     .map((g) => {
       const windowsHtml = (g.windows || [])
         .map((w) => {
           const pct = w.remaining_percent ?? 0;
+          const resetMs = toEpochMs(w.reset_at);
           return `
             <div class="win-row">
-              <div>
+              <div class="win-info">
                 <div class="win-label">${escapeHtml(w.label)}</div>
-                <div class="muted">${w.reset_at ? `Resets in ${escapeHtml(formatReset(w.reset_at, offsetHours))}` : 'Ready / full'}</div>
+                <div class="muted num">
+                  ${
+                    resetMs
+                      ? `Reset dalam <span class="countdown" data-reset-ms="${resetMs}">${escapeHtml(formatReset(w.reset_at, offsetHours).split(' (')[0])}</span> · ${escapeHtml(formatLocalTime(resetMs, offsetHours))}`
+                      : 'Ready / 100% penuh'
+                  }
+                </div>
               </div>
               <div class="win-right">
                 <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${barColor(pct)}"></div></div>
-                <span class="pct">${pct}% left</span>
+                <span class="badge num ${toneClass(pct)}">${pct}%</span>
               </div>
             </div>`;
         })
@@ -57,7 +87,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
       return `
         <div class="card pool-card">
-          <div class="pool-title">${escapeHtml(g.name)}</div>
+          <div class="pool-header">
+            <div class="pool-title"><i data-lucide="layers"></i><span>${escapeHtml(g.name)}</span></div>
+            <span class="muted">Antigravity Pool</span>
+          </div>
           ${windowsHtml}
         </div>`;
     })
@@ -66,71 +99,86 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const modelRows = models
     .map((m) => {
       const pct = m.remaining_percent ?? 0;
+      const resetMs = toEpochMs(m.reset_at);
       return `
-        <tr>
-          <td><strong>${escapeHtml(m.name)}</strong><br><span class="muted">${escapeHtml(m.id)}</span></td>
+        <tr data-model-name="${escapeHtml((m.name + ' ' + m.id).toLowerCase())}">
+          <td><strong>${escapeHtml(m.name)}</strong><br><span class="muted mono">${escapeHtml(m.id)}</span></td>
           <td>
-            <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${barColor(pct)}"></div></div>
-            <span class="pct">${m.remaining_percent === null ? '—' : `${pct}%`}</span>
+            <div class="win-right">
+              <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${barColor(pct)}"></div></div>
+              <span class="pct num">${m.remaining_percent === null ? '—' : `${pct}%`}</span>
+            </div>
           </td>
-          <td>${escapeHtml(formatReset(m.reset_at, offsetHours))}</td>
+          <td class="num">
+            ${
+              resetMs
+                ? `<span class="countdown" data-reset-ms="${resetMs}">${escapeHtml(formatReset(m.reset_at, offsetHours).split(' (')[0])}</span><br><span class="muted">${escapeHtml(formatLocalTime(resetMs, offsetHours))}</span>`
+                : '—'
+            }
+          </td>
         </tr>`;
     })
     .join('');
 
+  const copilotPct = copilot?.percent_remaining ?? copilot?.quota_percent ?? 0;
+  const copilotResetMs = toEpochMs(copilot?.reset_at);
   const copilotCard = copilot
     ? `<div class="card pool-card">
-        <div class="pool-title">GitHub Copilot <span class="muted">(${escapeHtml(copilot.plan_tier || 'individual')})</span></div>
+        <div class="pool-header">
+          <div class="pool-title"><i data-lucide="github"></i><span>GitHub Copilot</span></div>
+          <span class="badge">${escapeHtml(copilot.plan_tier || 'individual')}</span>
+        </div>
         <div class="win-row">
-          <div>
-            <div class="win-label">AI credits (resets monthly)</div>
-            <div class="muted">${
+          <div class="win-info">
+            <div class="win-label">AI Credits (bulanan)</div>
+            <div class="muted num">${
               copilot.error
                 ? escapeHtml(copilot.error)
-                : `${copilot.credits_used ?? '—'} used · ${copilot.credits_remaining ?? '—'} / ${copilot.credits_entitlement ?? '—'} left · Resets in ${escapeHtml(formatReset(copilot.reset_at, offsetHours))}`
+                : `${copilot.credits_used ?? '—'} terpakai · ${copilot.credits_remaining ?? '—'} / ${copilot.credits_entitlement ?? '—'} sisa · Reset dalam <span class="countdown" data-reset-ms="${copilotResetMs || ''}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
             }</div>
           </div>
           <div class="win-right">
-            <div class="bar-wrap"><div class="bar" style="width:${copilot.percent_remaining ?? copilot.quota_percent ?? 0}%;background:${barColor(copilot.percent_remaining ?? copilot.quota_percent ?? 0)}"></div></div>
-            <span class="pct">${copilot.percent_remaining ?? copilot.quota_percent ?? '—'}% left</span>
+            <div class="bar-wrap"><div class="bar" style="width:${copilotPct}%;background:${barColor(copilotPct)}"></div></div>
+            <span class="badge num ${toneClass(copilotPct)}">${copilot.percent_remaining ?? copilot.quota_percent ?? '—'}%</span>
           </div>
         </div>
       </div>`
     : '';
 
-  const geminiWebCard = geminiWeb
+  const geminiDailyLeft = Math.max(0, 100 - (geminiWeb?.daily_used ?? 0));
+  const geminiWeeklyLeft = Math.max(0, 100 - (geminiWeb?.weekly_used ?? 0));
+  const geminiCard = geminiWeb
     ? `<div class="card pool-card">
-        <div class="pool-title">Google Gemini Web <span class="muted">(gemini.google.com · synced via extension)</span></div>
+        <div class="pool-header">
+          <div class="pool-title"><i data-lucide="sparkles"></i><span>Google Gemini Web</span></div>
+          <span class="muted">Extension Sync</span>
+        </div>
         <div class="win-row">
-          <div>
-            <div class="win-label">Penggunaan saat ini (5h/session)</div>
-            <div class="muted">${escapeHtml(geminiWeb.daily_reset_label || '—')} · ${geminiWeb.daily_used ?? '—'}% used</div>
+          <div class="win-info">
+            <div class="win-label">Sesi 5h / Saat ini</div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.daily_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span> · ${geminiWeb.daily_used ?? '—'}% used</div>
           </div>
           <div class="win-right">
-            <div class="bar-wrap"><div class="bar" style="width:${100 - (geminiWeb.daily_used ?? 0)}%;background:${barColor(100 - (geminiWeb.daily_used ?? 0))}"></div></div>
-            <span class="pct">${100 - (geminiWeb.daily_used ?? 0)}% left</span>
+            <div class="bar-wrap"><div class="bar" style="width:${geminiDailyLeft}%;background:${barColor(geminiDailyLeft)}"></div></div>
+            <span class="badge num ${toneClass(geminiDailyLeft)}">${geminiDailyLeft}%</span>
           </div>
         </div>
         <div class="win-row">
-          <div>
-            <div class="win-label">Batas mingguan</div>
-            <div class="muted">${escapeHtml(geminiWeb.weekly_reset_label || '—')} · ${geminiWeb.weekly_used ?? '—'}% used</div>
+          <div class="win-info">
+            <div class="win-label">Batas Mingguan</div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.weekly_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span> · ${geminiWeb.weekly_used ?? '—'}% used</div>
           </div>
           <div class="win-right">
-            <div class="bar-wrap"><div class="bar" style="width:${100 - (geminiWeb.weekly_used ?? 0)}%;background:${barColor(100 - (geminiWeb.weekly_used ?? 0))}"></div></div>
-            <span class="pct">${100 - (geminiWeb.weekly_used ?? 0)}% left</span>
+            <div class="bar-wrap"><div class="bar" style="width:${geminiWeeklyLeft}%;background:${barColor(geminiWeeklyLeft)}"></div></div>
+            <span class="badge num ${toneClass(geminiWeeklyLeft)}">${geminiWeeklyLeft}%</span>
           </div>
         </div>
       </div>`
     : '';
 
   const lastWake = wakeState?.lastWakeResult
-    ? `${escapeHtml(wakeState.lastWakeResult.model)} at ${escapeHtml(wakeState.lastWakeResult.triggeredAt)} — "${escapeHtml(wakeState.lastWakeResult.reply)}"`
-    : 'Belum ada auto-wake';
-
-  const updatedAt = latest?.fetched_at
-    ? new Date(latest.fetched_at * 1000 + offsetHours * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19) + ` UTC+${offsetHours}`
-    : 'Belum ada data';
+    ? `<strong>${escapeHtml(wakeState.lastWakeResult.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeState.lastWakeResult.triggeredAt)}">${escapeHtml(wakeState.lastWakeResult.triggeredAt)}</span><br><span class="muted">Balasan: "${escapeHtml(wakeState.lastWakeResult.reply)}"</span>`
+    : '<span class="muted">Belum ada riwayat auto-wake</span>';
 
   return `<!doctype html>
 <html lang="id">
@@ -139,83 +187,332 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Quota Reset Automation</title>
   <style>
-    :root { color-scheme: dark; --bg:#0b0f17; --card:#121826; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af; }
-    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
-    .wrap { max-width:860px; margin:0 auto; }
-    h1 { font-size:1.35rem; margin:0 0 6px; }
-    .muted { color:var(--muted); font-size:0.82rem; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:16px 0; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
-    .val { font-size:1.55rem; font-weight:700; margin-top:4px; }
-    .pools { display:flex; flex-direction:column; gap:12px; margin:16px 0; }
-    .pool-title { font-size:1rem; font-weight:700; margin-bottom:10px; }
-    .win-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--border); }
-    .win-label { font-size:0.9rem; font-weight:600; }
-    .win-right { display:flex; align-items:center; gap:8px; white-space:nowrap; }
-    details { margin-top:14px; }
-    summary { cursor:pointer; color:var(--muted); font-size:0.88rem; margin-bottom:8px; }
-    table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-    th,td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--border); font-size:0.88rem; }
-    th { color:var(--muted); font-weight:600; font-size:0.78rem; text-transform:uppercase; }
-    .bar-wrap { width:96px; height:8px; background:#1f2937; border-radius:999px; display:inline-block; vertical-align:middle; overflow:hidden; }
-    .bar { height:100%; border-radius:999px; }
-    .pct { font-variant-numeric:tabular-nums; font-weight:600; font-size:0.9rem; }
-    .actions { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
-    input,button { background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:0.88rem; }
-    button { background:#2563eb; border-color:#2563eb; cursor:pointer; font-weight:600; }
-    button.sec { background:#1f2937; border-color:#374151; }
-    pre { background:var(--card); border:1px solid var(--border); padding:10px; border-radius:8px; font-size:0.8rem; overflow:auto; display:none; }
+    :root {
+      color-scheme: dark;
+      --bg: #0c0f14;
+      --surface: #131820;
+      --surface-inset: #1a212d;
+      --border: #232b38;
+      --border-strong: #2f3a4a;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --ease: cubic-bezier(0.2, 0, 0, 1);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 16px 40px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    .num { font-variant-numeric: tabular-nums; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; }
+
+    /* Header */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: grid; place-items: center;
+      color: var(--accent);
+    }
+    h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+    .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.82rem; color: var(--muted); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); }
+
+    /* Summary Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+    .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 3px; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+
+    /* Pools */
+    .pools { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+    .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .pool-title { display: inline-flex; align-items: center; gap: 7px; font-size: 0.96rem; font-weight: 650; }
+    .win-row {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 14px; padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .win-info { min-width: 0; }
+    .win-label { font-size: 0.88rem; font-weight: 600; margin-bottom: 2px; }
+    .win-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+    .bar-wrap { width: 100px; height: 7px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; border-radius: 999px; }
+
+    .badge {
+      padding: 2px 7px; border-radius: 6px;
+      font-size: 0.78rem; font-weight: 600;
+      background: var(--surface-inset); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .badge.is-ok { color: var(--ok); border-color: rgba(16, 185, 129, 0.28); }
+    .badge.is-warn { color: var(--warn); border-color: rgba(245, 158, 11, 0.28); }
+    .badge.is-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.28); }
+
+    /* Details Table */
+    details { margin-bottom: 16px; }
+    summary {
+      display: inline-flex; align-items: center; gap: 6px;
+      cursor: pointer; color: var(--muted); font-size: 0.85rem; font-weight: 500;
+      margin-bottom: 10px;
+    }
+    summary:hover { color: var(--text); }
+    .table-tools { margin-bottom: 8px; }
+    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+    tr:last-child td { border-bottom: 0; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-inset); }
+
+    /* Controls */
+    .actions {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .input-wrap { position: relative; flex: 1; min-width: 190px; display: flex; align-items: center; }
+    input {
+      width: 100%;
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 34px 8px 11px; font-size: 0.85rem; outline: none;
+      transition: border-color 150ms var(--ease);
+    }
+    input:focus { border-color: var(--accent); }
+    .eye-btn {
+      position: absolute; right: 6px; width: 24px; height: 24px; padding: 0;
+      border: 0; background: transparent; color: var(--muted);
+      display: grid; place-items: center; cursor: pointer;
+    }
+    .eye-btn:hover { color: var(--text); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent); border: 1px solid transparent; color: #fff;
+      border-radius: 8px; padding: 8px 13px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer;
+      transition: background-color 150ms var(--ease), transform 150ms var(--ease), opacity 150ms var(--ease);
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:active { transform: scale(0.96); }
+    .btn.sec { background: var(--surface-inset); border-color: var(--border-strong); color: var(--text); }
+    .btn.sec:hover { background: #222b3a; }
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 12px; border-radius: 10px; font-size: 0.78rem; overflow: auto;
+      display: none; margin-top: 10px;
+    }
+    svg.lucide { width: 15px; height: 15px; stroke-width: 1.85; flex-shrink: 0; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Quota Reset Automation</h1>
-    <div class="muted">Last sync: ${escapeHtml(updatedAt)} | Tier: ${escapeHtml(ag?.plan_tier || '—')} | Cron: every 5m</div>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"><i data-lucide="activity"></i></div>
+        <div>
+          <h1>Quota Reset Automation</h1>
+          <div class="subline">
+            <span>Tier: <strong>${escapeHtml(ag?.plan_tier || '—')}</strong></span>
+            <span>·</span>
+            <span class="num">Sync: ${escapeHtml(updatedAt)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="pill num">
+        <span class="dot"></span>
+        <span>Cron berikutnya: <strong id="nextCron">--:--</strong></span>
+      </div>
+    </header>
 
-    <div class="grid">
+    <section class="grid">
       <div class="card">
-        <div class="muted">Antigravity 5h Reset</div>
-        <div class="val">${ag?.rolling_reset_at ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : '—'}</div>
-        <div class="muted">${ag?.rolling_reset_at ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours)) : 'Belum ada data'}</div>
+        <div class="kpi-label"><i data-lucide="timer"></i><span>Antigravity 5h Reset</span></div>
+        <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : 'Ready / —'}</div>
+        <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : 'Menunggu siklus berikutnya'}</div>
       </div>
       <div class="card">
-        <div class="muted">GitHub Copilot</div>
-        <div class="val">${copilot?.quota_percent ?? '—'}%</div>
-        <div class="muted">${copilot?.error ? escapeHtml(copilot.error) : escapeHtml(formatReset(copilot?.reset_at, offsetHours))}</div>
+        <div class="kpi-label"><i data-lucide="cpu"></i><span>GitHub Copilot</span></div>
+        <div class="kpi-val num">${copilot?.quota_percent ?? '—'}%</div>
+        <div class="muted num">${
+          copilot?.error
+            ? escapeHtml(copilot.error)
+            : copilotResetMs
+              ? `Reset <span class="countdown" data-reset-ms="${copilotResetMs}">${escapeHtml(formatReset(copilot.reset_at, offsetHours).split(' (')[0])}</span>`
+              : 'Tidak aktif'
+        }</div>
       </div>
       <div class="card">
-        <div class="muted">Last Auto-Wake</div>
-        <div style="font-size:0.86rem;margin-top:6px;">${lastWake}</div>
+        <div class="kpi-label"><i data-lucide="zap"></i><span>Auto-Wake Terakhir</span></div>
+        <div style="font-size:0.86rem;margin-top:8px;">${lastWake}</div>
       </div>
-    </div>
+    </section>
 
-    <div class="pools">
+    <section class="pools">
       ${groupCards || '<div class="card muted">Belum ada data pool kuota.</div>'}
       ${copilotCard}
-      ${geminiWebCard}
-    </div>
+      ${geminiCard}
+    </section>
 
     <details>
-      <summary>Detail Semua Model (${models.length})</summary>
-      <table>
-        <thead><tr><th>Model</th><th>Remaining</th><th>Reset In</th></tr></thead>
-        <tbody>${modelRows || '<tr><td colspan="3" class="muted">Belum ada data model.</td></tr>'}</tbody>
-      </table>
+      <summary><i data-lucide="list"></i><span>Detail Semua Model (${models.length})</span></summary>
+      <div class="table-tools">
+        <input id="modelFilter" type="search" placeholder="Filter model (misal: claude, gemini, gpt)..." style="max-width:300px;padding:7px 10px;" />
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>Remaining</th><th>Reset Countdown</th></tr></thead>
+          <tbody>${modelRows || '<tr><td colspan="3" class="muted">Belum ada data model.</td></tr>'}</tbody>
+        </table>
+      </div>
     </details>
 
-    <div class="actions">
-      <input id="tok" type="password" placeholder="X-Auth-Token" />
-      <button onclick="callApi('/api/automation/tick')">Run Sync Tick</button>
-      <button class="sec" onclick="callApi('/api/automation/wake')">Force Wake Now</button>
-    </div>
+    <section class="actions">
+      <div class="input-wrap">
+        <input id="tok" type="password" placeholder="X-Auth-Token" autocomplete="off" />
+        <button id="toggleTok" type="button" class="eye-btn" title="Tampilkan token"><i data-lucide="eye"></i></button>
+      </div>
+      <button class="btn" type="button" onclick="callApi('/api/automation/tick')"><i data-lucide="refresh-cw"></i><span>Run Sync Tick</span></button>
+      <button class="btn sec" type="button" onclick="callApi('/api/automation/wake')"><i data-lucide="zap"></i><span>Force Wake Now</span></button>
+    </section>
     <pre id="out"></pre>
   </div>
+
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
   <script>
+    if (window.lucide) window.lucide.createIcons();
+
+    function formatCountdown(targetMs) {
+      const diff = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));
+      if (diff <= 0) return '00:00:00 (siap)';
+      const d = Math.floor(diff / 86400);
+      const h = Math.floor((diff % 86400) / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+      return d > 0 ? d + 'd ' + pad(h) + ':' + pad(m) + ':' + pad(s) : pad(h) + ':' + pad(m) + ':' + pad(s);
+    }
+
+    function parseGeminiLabel(label, kind) {
+      if (!label || label === 'Unknown' || label === '—') return null;
+      const now = new Date();
+      const months = { jan:0, feb:1, mar:2, apr:3, mei:4, may:4, jun:5, jul:6, agu:7, aug:7, sep:8, okt:9, oct:9, nov:10, des:11, dec:11 };
+      const timeMatch = label.match(/(\\d{1,2})[.:](\\d{2})(?:\\s*(AM|PM))?/i);
+      if (!timeMatch) return null;
+      let hr = parseInt(timeMatch[1], 10);
+      const min = parseInt(timeMatch[2], 10);
+      const ap = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+      if (ap === 'PM' && hr < 12) hr += 12;
+      if (ap === 'AM' && hr === 12) hr = 0;
+
+      if (kind === 'weekly') {
+        const dateMatch = label.match(/(\\d{1,2})\\s+([A-Za-z]+)|([A-Za-z]+)\\s+(\\d{1,2})/);
+        if (dateMatch) {
+          const day = parseInt(dateMatch[1] || dateMatch[4], 10);
+          const monKey = (dateMatch[2] || dateMatch[3]).slice(0, 3).toLowerCase();
+          const mon = months[monKey];
+          if (mon !== undefined) {
+            const target = new Date(now.getFullYear(), mon, day, hr, min, 0, 0);
+            if (target.getTime() < now.getTime() - 86400000) target.setFullYear(now.getFullYear() + 1);
+            return target.getTime();
+          }
+        }
+      }
+
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hr, min, 0, 0);
+      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+      return target.getTime();
+    }
+
+    function tickTimers() {
+      document.querySelectorAll('.countdown[data-reset-ms]').forEach((el) => {
+        const ms = Number(el.dataset.resetMs);
+        if (ms > 0) el.textContent = formatCountdown(ms);
+      });
+
+      document.querySelectorAll('.gemini-countdown').forEach((el) => {
+        const ms = parseGeminiLabel(el.dataset.geminiLabel, el.dataset.geminiKind);
+        el.textContent = ms ? '(' + formatCountdown(ms) + ')' : '';
+      });
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const nextCronRem = 300 - (nowSec % 300);
+      const m = String(Math.floor(nextCronRem / 60)).padStart(2, '0');
+      const s = String(nextCronRem % 60).padStart(2, '0');
+      const cronEl = document.getElementById('nextCron');
+      if (cronEl) cronEl.textContent = m + ':' + s;
+    }
+
+    tickTimers();
+    setInterval(tickTimers, 1000);
+
+    const filterInput = document.getElementById('modelFilter');
+    if (filterInput) {
+      filterInput.addEventListener('input', () => {
+        const q = filterInput.value.trim().toLowerCase();
+        document.querySelectorAll('tbody tr[data-model-name]').forEach((row) => {
+          row.style.display = !q || row.dataset.modelName.includes(q) ? '' : 'none';
+        });
+      });
+    }
+
+    const tokInput = document.getElementById('tok');
+    const savedTok = localStorage.getItem('qra_auth_token');
+    if (savedTok && tokInput) tokInput.value = savedTok;
+
+    const toggleTok = document.getElementById('toggleTok');
+    if (toggleTok && tokInput) {
+      toggleTok.addEventListener('click', () => {
+        const show = tokInput.type === 'password';
+        tokInput.type = show ? 'text' : 'password';
+        toggleTok.innerHTML = '<i data-lucide="' + (show ? 'eye-off' : 'eye') + '"></i>';
+        if (window.lucide) window.lucide.createIcons({ root: toggleTok });
+      });
+    }
+
     async function callApi(path) {
       const out = document.getElementById('out');
       out.style.display = 'block';
       out.textContent = 'Running...';
-      const tok = document.getElementById('tok').value;
+      const tok = tokInput.value.trim();
+      if (tok) localStorage.setItem('qra_auth_token', tok);
       const res = await fetch(path, { method: 'POST', headers: { 'X-Auth-Token': tok } });
       out.textContent = JSON.stringify(await res.json(), null, 2);
       if (res.ok) setTimeout(() => location.reload(), 1200);

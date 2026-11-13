@@ -24,7 +24,7 @@
 }
 
 body {
-  width: 340px;
+  width: 356px;
   margin: 0;
   padding: 14px;
   background: var(--bg);
@@ -91,6 +91,7 @@ body {
   display: grid;
   place-items: center;
   cursor: pointer;
+  text-decoration: none;
   transition-property: background-color, border-color, color, transform;
   transition-duration: 150ms;
   transition-timing-function: var(--ease);
@@ -290,7 +291,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 
 .card-title {
@@ -316,11 +317,18 @@ body {
 .badge.is-warn { color: var(--warn); border-color: rgba(245, 158, 11, 0.25); }
 .badge.is-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.25); }
 
+.countdown-val {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
 .meta-line {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-muted);
   margin-top: 3px;
 }
@@ -334,7 +342,7 @@ body {
 }
 
 .bar-value {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
@@ -344,7 +352,7 @@ body {
   border-radius: 999px;
   background: var(--surface-inset);
   overflow: hidden;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
 }
 
 .bar-fill {
@@ -355,6 +363,51 @@ body {
   transition-property: width, background-color;
   transition-duration: 300ms;
   transition-timing-function: var(--ease);
+}
+
+.split-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Worker Overview Card */
+.overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.overview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+}
+
+.overview-name {
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.overview-timer {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 /* Forms & Buttons */
@@ -478,10 +531,9 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Lucide stroke alignment */
 svg.lucide {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   stroke-width: 1.75;
   flex-shrink: 0;
 }
