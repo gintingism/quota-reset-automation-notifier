@@ -10,6 +10,11 @@ import {
 import { parseAntigravityModels, parseSseResponse } from '../src/cloudcode.js';
 import { parseCopilotUserResponse } from '../src/copilot.js';
 import { sendDedupedAlert } from '../src/notifier.js';
+import {
+  decodeBatchExecuteEnvelope,
+  parseGeminiRpcWindows,
+  computeBurnRateForecast,
+} from '../src/gemini_rpc.js';
 
 test('shouldTriggerOnReset enforces all 4 guards', () => {
   const now = Date.parse('2026-11-13T05:00:00Z');
@@ -167,4 +172,47 @@ test('parseCopilotUserResponse extracts AI credits and monthly reset', () => {
   assert.equal(parsed.credits_used, 125);
   assert.equal(parsed.credits_remaining, 74.3);
   assert.equal(parsed.credits_entitlement, 200);
+});
+
+test('decodeBatchExecuteEnvelope and parseGeminiRpcWindows extract exact timestamps and tier', () => {
+  const innerPayload = JSON.stringify([
+    2,
+    [
+      [2160, 0.1, 1, [[1794650000, 0]]],
+      [44513, 0.08, 2, [[1795000000, 0]]],
+    ],
+    false,
+  ]);
+  const envelope = [
+    ")]}'",
+    '',
+    '120',
+    JSON.stringify([['wrb.fr', 'jSf9Qc', innerPayload, null, null, null, 'generic']]),
+  ].join('\n');
+
+  const decoded = decodeBatchExecuteEnvelope(envelope, 'jSf9Qc');
+  const parsed = parseGeminiRpcWindows(decoded, [['plus_policy']]);
+
+  assert.equal(parsed.planTier, 'AI Pro');
+  assert.equal(parsed.dailyUsed, 10);
+  assert.equal(parsed.dailyResetAt, new Date(1794650000 * 1000).toISOString());
+  assert.equal(parsed.remaining5h, 2160);
+  assert.equal(parsed.weeklyUsed, 8);
+  assert.equal(parsed.weeklyResetAt, new Date(1795000000 * 1000).toISOString());
+  assert.equal(parsed.remaining7d, 44513);
+});
+
+test('computeBurnRateForecast detects on_track vs over_pace depletion', () => {
+  const nowMs = Date.parse('2026-11-14T10:00:00Z');
+  // 4 hours remaining out of 5h window (20% elapsed)
+  const resetAtMs = nowMs + 4 * 3600 * 1000;
+
+  const safe = computeBurnRateForecast(10, resetAtMs, 5, nowMs);
+  assert.equal(safe.status, 'on_track');
+  assert.equal(safe.willExhaustBeforeReset, false);
+
+  const fast = computeBurnRateForecast(50, resetAtMs, 5, nowMs);
+  assert.equal(fast.status, 'over_pace');
+  assert.equal(fast.willExhaustBeforeReset, true);
+  assert.equal(fast.depletionMs, 3600 * 1000);
 });

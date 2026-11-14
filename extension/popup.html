@@ -15,7 +15,7 @@
       </div>
       <div>
         <h1 class="brand-title">Gemini Quota Sync</h1>
-        <div class="brand-sub">gemini.google.com/usage</div>
+        <div class="brand-sub"><span id="geminiPlanBadge">gemini.google.com/usage</span></div>
       </div>
     </div>
     <div class="header-actions">
@@ -76,6 +76,10 @@
           <i data-lucide="clock"></i>
           <span id="dailyReset" class="num">Reset: —</span>
         </div>
+        <div class="meta-line">
+          <i data-lucide="trending-up"></i>
+          <span id="dailyPace" class="num">—</span>
+        </div>
       </div>
     </section>
 
@@ -96,6 +100,10 @@
           <span id="weeklyReset" class="num">Reset: —</span>
         </div>
         <span id="weeklyCountdown" class="badge num">—</span>
+      </div>
+      <div class="meta-line" style="margin-top:5px;">
+        <i data-lucide="trending-up"></i>
+        <span id="weeklyPace" class="num">—</span>
       </div>
     </section>
 

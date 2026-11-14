@@ -27,7 +27,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- | :--- |
 | **Antigravity** (`src/cloudcode.js`) | `daily-cloudcode-pa.googleapis.com` | Gemini (5h + Weekly), Claude & GPT (5h + Weekly), Gemini 4 Argon (Weekly) | Yes, per 5h pool (`"1+1"`, max 16 tokens) | Wake, Reset, Low Quota, Auth Expired |
 | **GitHub Copilot** (`src/copilot.js`) | `api.github.com/copilot_internal/user` | Monthly AI credits (`credits_used`, `credits_remaining`, `entitlement`) | No (monthly cycle only) | Low Quota, Monthly Reset |
-| **Gemini Web** (`extension/`) | `gemini.google.com/usage` DOM (EN & ID) | 5h/session (`dailyUsed`), Weekly (`weeklyUsed`) | No (browser session only) | Low Quota |
+| **Gemini Web** (`extension/`) | `batchexecute` RPC (`jSf9Qc` / `otAQ7b`) with DOM fallback | 5h/session (`dailyUsed`), Weekly (`weeklyUsed`), Plan Tier | No (browser session only) | Low Quota |
 
 ## Auto-Wake guards (`src/wake_engine.js`)
 
@@ -120,7 +120,7 @@ npm run deploy
 
 What the popup shows:
 
-- **Gemini Web**: 5h session ring with remaining %, a live reset countdown, and the weekly limit bar with its own countdown.
+- **Gemini Web**: 5h session ring with remaining %, exact reset countdown, burn-rate / pace forecast (`Laju aman` vs `Boros · habis ~Xj Ym lagi`), and the weekly limit bar with its own countdown and pace. Uses lightweight `batchexecute` RPC (`jSf9Qc` + `otAQ7b`) first (<2 MB RAM, no iframe) and falls back to the `offscreen` DOM scraper only if needed.
 - **Antigravity**: dedicated card with the Antigravity mark, plan tier badge, one row per pool (`Gemini Models`, `Claude and GPT`, `Gemini 4 Argon`), remaining %, mini bar, and live 5h reset countdown. Loaded from `GET /api/quota/latest`.
 - **GitHub Copilot**: dedicated card with the GitHub mark, plan tier, AI credits left, remaining % bar, and monthly reset countdown. Loaded from `GET /api/quota/latest`.
 - **Footer**: time since the last read and time until the next auto-sync.

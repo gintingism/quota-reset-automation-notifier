@@ -151,6 +151,8 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
   const geminiDailyLeft = Math.max(0, 100 - (geminiWeb?.daily_used ?? 0));
   const geminiWeeklyLeft = Math.max(0, 100 - (geminiWeb?.weekly_used ?? 0));
+  const geminiDailyResetMs = toEpochMs(geminiWeb?.daily_reset_at);
+  const geminiWeeklyResetMs = toEpochMs(geminiWeb?.weekly_reset_at);
   const geminiCard = geminiWeb
     ? `<div class="provider-card">
         <div class="pool-header">
@@ -158,12 +160,16 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
             <span class="provider-logo is-gemini">${SVG_GEMINI}</span>
             <span>Google Gemini Web</span>
           </div>
-          <span class="badge">Extension Sync</span>
+          <span class="badge">${escapeHtml(geminiWeb.plan_tier || 'Extension Sync')}</span>
         </div>
         <div class="win-row">
           <div class="win-info">
             <div class="win-label" data-i18n="geminiSession">Sesi 5h / Saat ini</div>
-            <div class="muted num">Reset: ${escapeHtml(geminiWeb.daily_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span> · ${geminiWeb.daily_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.daily_reset_label || '—')} ${
+              geminiDailyResetMs
+                ? `(<span class="countdown" data-reset-ms="${geminiDailyResetMs}">${escapeHtml(formatReset(geminiWeb.daily_reset_at, offsetHours).split(' (')[0])}</span>)`
+                : `<span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span>`
+            } · ${geminiWeb.daily_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiDailyLeft}%;background:${barColor(geminiDailyLeft)}"></div></div>
@@ -173,7 +179,11 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         <div class="win-row">
           <div class="win-info">
             <div class="win-label" data-i18n="geminiWeekly">Batas Mingguan</div>
-            <div class="muted num">Reset: ${escapeHtml(geminiWeb.weekly_reset_label || '—')} <span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span> · ${geminiWeb.weekly_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
+            <div class="muted num">Reset: ${escapeHtml(geminiWeb.weekly_reset_label || '—')} ${
+              geminiWeeklyResetMs
+                ? `(<span class="countdown" data-reset-ms="${geminiWeeklyResetMs}">${escapeHtml(formatReset(geminiWeb.weekly_reset_at, offsetHours).split(' (')[0])}</span>)`
+                : `<span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span>`
+            } · ${geminiWeb.weekly_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiWeeklyLeft}%;background:${barColor(geminiWeeklyLeft)}"></div></div>

@@ -31,6 +31,8 @@ const I18N = {
     autoSyncActive: 'Auto-sync 15m aktif',
     copilotCreditsLeft: (rem, ent) => `${rem} / ${ent} AI credits sisa`,
     copilotCreditsUsed: (used) => `${used} terpakai`,
+    paceSafe: (elapsed) => `Laju aman (${elapsed}% waktu berjalan)`,
+    paceDepletes: (dur) => `Boros · habis ~${dur} lagi`,
   },
   en: {
     tabStatus: 'Status',
@@ -62,11 +64,15 @@ const I18N = {
     autoSyncActive: '15m auto-sync active',
     copilotCreditsLeft: (rem, ent) => `${rem} / ${ent} AI credits left`,
     copilotCreditsUsed: (used) => `${used} used`,
+    paceSafe: (elapsed) => `On track (${elapsed}% window elapsed)`,
+    paceDepletes: (dur) => `Over pace · depletes in ~${dur}`,
   },
 };
 
 const state = {
   lang: 'id',
+  dailyUsed: 0,
+  weeklyUsed: 0,
   dailyResetMs: null,
   weeklyResetMs: null,
   nextAlarmMs: null,
@@ -199,6 +205,37 @@ function switchTab(tabName) {
   settingsPanel.hidden = tabName !== 'settings';
 }
 
+function formatShortDuration(ms) {
+  const totalMin = Math.max(1, Math.round(ms / 60000));
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  const dayUnit = state.lang === 'en' ? 'd' : 'h';
+  const hrUnit = state.lang === 'en' ? 'h' : 'j';
+  if (d > 0) return `${d}${dayUnit} ${h}${hrUnit}`;
+  if (h > 0) return `${h}${hrUnit} ${m}m`;
+  return `${m}m`;
+}
+
+function formatBurnForecast(usedPct, resetMs, windowHours) {
+  if (!Number.isFinite(usedPct) || !resetMs || resetMs <= Date.now()) return '—';
+  const totalMs = windowHours * 3600 * 1000;
+  const remainingMs = Math.max(0, resetMs - Date.now());
+  if (remainingMs > totalMs) return t().paceSafe(0);
+  const elapsedMs = Math.max(0, totalMs - remainingMs);
+  const elapsedPct = Math.min(100, Math.round((elapsedMs / totalMs) * 100));
+
+  if (usedPct <= 0 || elapsedMs < 3 * 60 * 1000) {
+    return t().paceSafe(elapsedPct);
+  }
+  const ratePerMs = usedPct / elapsedMs;
+  const depletionMs = (100 - usedPct) / ratePerMs;
+  if (depletionMs < remainingMs) {
+    return t().paceDepletes(formatShortDuration(depletionMs));
+  }
+  return t().paceSafe(elapsedPct);
+}
+
 function tickLiveCountdowns() {
   const dict = t();
   const dailyEl = document.getElementById('dailyCountdown');
@@ -208,9 +245,19 @@ function tickLiveCountdowns() {
       : dict.waitingSchedule;
   }
 
+  const dailyPaceEl = document.getElementById('dailyPace');
+  if (dailyPaceEl) {
+    dailyPaceEl.textContent = formatBurnForecast(state.dailyUsed, state.dailyResetMs, 5);
+  }
+
   const weeklyEl = document.getElementById('weeklyCountdown');
   if (weeklyEl) {
     weeklyEl.textContent = state.weeklyResetMs ? formatCountdown(state.weeklyResetMs) : '—';
+  }
+
+  const weeklyPaceEl = document.getElementById('weeklyPace');
+  if (weeklyPaceEl) {
+    weeklyPaceEl.textContent = formatBurnForecast(state.weeklyUsed, state.weeklyResetMs, 168);
   }
 
   document.querySelectorAll('.overview-timer[data-reset-ms]').forEach((el) => {
@@ -360,7 +407,16 @@ function render() {
       if (authToken) tokenInput.value = authToken;
 
       if (geminiUsage) {
+        const planEl = document.getElementById('geminiPlanBadge');
+        if (planEl) {
+          const modeLabel = geminiUsage.sourceMode === 'rpc' ? 'RPC' : 'DOM';
+          planEl.textContent = geminiUsage.planTier
+            ? `${geminiUsage.planTier} · ${modeLabel} · gemini.google.com`
+            : 'gemini.google.com/usage';
+        }
+
         const dailyUsed = clampPct(geminiUsage.dailyUsed);
+        state.dailyUsed = dailyUsed;
         const dailyRemaining = 100 - dailyUsed;
         const dailyTone = getTone(dailyRemaining);
 
@@ -376,9 +432,13 @@ function render() {
         dailyRing.style.stroke = dailyTone.color;
 
         document.getElementById('dailyReset').textContent = `${dict.resetsAtPrefix} ${geminiUsage.dailyReset || '—'}`;
-        state.dailyResetMs = parseGeminiLabel(geminiUsage.dailyReset, 'daily');
+        const exactDailyMs = geminiUsage.dailyResetAt ? Date.parse(geminiUsage.dailyResetAt) : NaN;
+        state.dailyResetMs = Number.isFinite(exactDailyMs)
+          ? exactDailyMs
+          : parseGeminiLabel(geminiUsage.dailyReset, 'daily');
 
         const weeklyUsed = clampPct(geminiUsage.weeklyUsed);
+        state.weeklyUsed = weeklyUsed;
         const weeklyRemaining = 100 - weeklyUsed;
         const weeklyTone = getTone(weeklyRemaining);
 
@@ -388,7 +448,10 @@ function render() {
         weeklyBar.style.backgroundColor = weeklyTone.color;
 
         document.getElementById('weeklyReset').textContent = `${geminiUsage.weeklyReset || '—'}`;
-        state.weeklyResetMs = parseGeminiLabel(geminiUsage.weeklyReset, 'weekly');
+        const exactWeeklyMs = geminiUsage.weeklyResetAt ? Date.parse(geminiUsage.weeklyResetAt) : NaN;
+        state.weeklyResetMs = Number.isFinite(exactWeeklyMs)
+          ? exactWeeklyMs
+          : parseGeminiLabel(geminiUsage.weeklyReset, 'weekly');
         state.lastUpdatedIso = geminiUsage.lastUpdated || null;
       }
 
