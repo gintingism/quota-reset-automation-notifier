@@ -23,10 +23,13 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "node --test tests/*.test.js",
-    "auth": "node scripts/get-refresh-token.mjs"
+    "auth": "node scripts/get-refresh-token.mjs",
+    "build:ext-css": "tailwindcss -i extension/src.css -o extension/popup.css --minify"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
     "lucide": "^1.72.0",
+    "tailwindcss": "^4.3.5",
     "wrangler": "^4.161.0"
   }
 }

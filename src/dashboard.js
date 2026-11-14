@@ -203,14 +203,17 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Quota Reset Automation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0c0f14;
-      --surface: #131820;
-      --surface-inset: #1a212d;
-      --border: #232b38;
-      --border-strong: #2f3a4a;
+      --bg: #0b0e14;
+      --surface: #121720;
+      --surface-inset: #19202c;
+      --border: #222a38;
+      --border-strong: #2e394a;
       --text: #e6edf3;
       --muted: #8b949e;
       --accent: #3b82f6;
@@ -221,38 +224,47 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       --ease: cubic-bezier(0.2, 0, 0, 1);
     }
     *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      padding: 24px 16px 40px;
+      padding: 0 16px 48px;
       line-height: 1.45;
       -webkit-font-smoothing: antialiased;
     }
-    .wrap { max-width: 900px; margin: 0 auto; }
+    .wrap { max-width: 920px; margin: 0 auto; }
     .num { font-variant-numeric: tabular-nums; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.76rem; }
 
-    /* Header */
+    /* Sticky Header (single restrained glass bar) */
     .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       gap: 12px;
       flex-wrap: wrap;
+      padding: 16px 0 14px;
       margin-bottom: 18px;
+      background: rgba(11, 14, 20, 0.82);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
     }
-    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand { display: flex; align-items: center; gap: 11px; }
     .brand-mark {
-      width: 34px; height: 34px;
-      border-radius: 8px;
+      width: 36px; height: 36px;
+      border-radius: 9px;
       background: var(--surface);
       border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       display: grid; place-items: center;
       color: var(--accent);
     }
-    h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+    h1 { font-size: 1.2rem; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
     .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.82rem; color: var(--muted); }
     .top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .pill {
@@ -291,24 +303,36 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     .lang-btn:active { transform: scale(0.96); }
 
     /* Summary Grid */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 16px;
+      border-radius: 14px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      padding: 15px 17px;
     }
     .kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
-    .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 3px; }
+    .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 3px; }
     .muted { color: var(--muted); font-size: 0.8rem; }
 
     /* Provider Sections & Pools */
-    .pools { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+    .pools { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; }
+    .secondary-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 760px) {
+      .secondary-grid {
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      }
+    }
     .provider-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
+      border-radius: 14px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      padding: 16px 18px;
     }
     .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
     .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 1rem; font-weight: 650; }
@@ -413,6 +437,9 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       display: none; margin-top: 10px;
     }
     svg.lucide { width: 15px; height: 15px; stroke-width: 1.85; flex-shrink: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
   </style>
 </head>
 <body>
@@ -489,8 +516,11 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           </div>
         </details>
       </div>
-      ${copilotCard}
-      ${geminiCard}
+      ${
+        copilotCard || geminiCard
+          ? `<div class="secondary-grid">${copilotCard}${geminiCard}</div>`
+          : ''
+      }
     </section>
 
     <section class="actions">
