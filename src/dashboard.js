@@ -105,9 +105,9 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         .join('');
 
       return `
-        <div class="subpool-card">
-          <div class="subpool-title" style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px;">
-            <span style="display:inline-flex;align-items:center;gap:6px;"><i data-lucide="box"></i><span>${escapeHtml(g.name)}</span></span>
+        <div class="pool-cell">
+          <div class="pool-cell-head">
+            <span class="pool-cell-name">${escapeHtml(g.name)}</span>
             ${decisionBadge}
           </div>
           ${windowsHtml}
@@ -248,13 +248,13 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0b0e14;
-      --surface: #121720;
-      --surface-inset: #19202c;
-      --border: #222a38;
-      --border-strong: #2e394a;
-      --text: #e6edf3;
-      --muted: #8b949e;
+      --bg: #090b0f;
+      --surface: #10141b;
+      --surface-inset: #161c26;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #f0f4f8;
+      --muted: #8f9aa8;
       --accent: #3b82f6;
       --accent-hover: #2563eb;
       --ok: #10b981;
@@ -269,15 +269,15 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      padding: 0 16px 48px;
-      line-height: 1.45;
+      padding: 0 18px 56px;
+      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
-    .wrap { max-width: 920px; margin: 0 auto; }
+    .wrap { max-width: 980px; margin: 0 auto; }
     .num { font-variant-numeric: tabular-nums; }
-    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.76rem; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; }
 
-    /* Sticky Header (single restrained glass bar) */
+    /* Sticky Topbar */
     .topbar {
       position: sticky;
       top: 0;
@@ -288,34 +288,33 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       gap: 12px;
       flex-wrap: wrap;
       padding: 16px 0 14px;
-      margin-bottom: 18px;
-      background: rgba(11, 14, 20, 0.82);
+      margin-bottom: 20px;
+      background: rgba(9, 11, 15, 0.88);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
     }
-    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
     .brand-mark {
-      width: 36px; height: 36px;
-      border-radius: 9px;
+      width: 34px; height: 34px;
+      border-radius: 8px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-strong);
       display: grid; place-items: center;
-      color: var(--accent);
+      color: var(--text);
     }
-    h1 { font-size: 1.2rem; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
-    .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.82rem; color: var(--muted); }
+    h1 { font-size: 1.15rem; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+    .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
     .top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .pill {
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex; align-items: center; gap: 7px;
       padding: 5px 10px;
-      border-radius: 8px;
+      border-radius: 7px;
       background: var(--surface);
       border: 1px solid var(--border);
       font-size: 0.78rem;
       color: var(--muted);
     }
-    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); }
+    .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
 
     /* Language Switch */
     .lang-switch {
@@ -323,7 +322,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       padding: 3px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 7px;
       gap: 2px;
     }
     .lang-btn {
@@ -332,124 +331,53 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       color: var(--muted);
       padding: 3px 8px;
       border-radius: 5px;
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 150ms var(--ease);
+      transition: background-color 150ms var(--ease), color 150ms var(--ease);
     }
     .lang-btn:hover { color: var(--text); }
     .lang-btn.is-active { background: var(--surface-inset); color: var(--text); }
-    .lang-btn:active { transform: scale(0.96); }
 
-    /* Summary Grid */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      padding: 15px 17px;
-    }
-    .kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
-    .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 3px; }
-    .muted { color: var(--muted); font-size: 0.8rem; }
-
-    /* Provider Sections & Pools */
-    .pools { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; }
-    .secondary-grid {
+    /* Unified Telemetry Strip */
+    .kpi-strip {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-    @media (min-width: 760px) {
-      .secondary-grid {
-        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-      }
-    }
-    .provider-card {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .kpi-cell {
       padding: 16px 18px;
+      border-right: 1px solid var(--border);
     }
-    .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
-    .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 1rem; font-weight: 650; }
-    .provider-logo {
-      width: 28px; height: 28px;
-      border-radius: 7px;
-      background: var(--surface-inset);
-      border: 1px solid var(--border-strong);
-      display: grid; place-items: center;
-      flex-shrink: 0;
+    .kpi-cell:last-child { border-right: 0; }
+    @media (max-width: 760px) {
+      .kpi-strip { grid-template-columns: 1fr; }
+      .kpi-cell { border-right: 0; border-bottom: 1px solid var(--border); }
+      .kpi-cell:last-child { border-bottom: 0; }
     }
-    .provider-logo svg { width: 16px; height: 16px; fill: currentColor; }
-    .provider-logo.is-ag { color: #60a5fa; }
-    .provider-logo.is-gh { color: #f0f6fc; }
-    .provider-logo.is-gemini { color: #60a5fa; }
-    .kpi-logo { width: 15px; height: 15px; display: inline-flex; align-items: center; }
-    .kpi-logo svg { width: 15px; height: 15px; fill: currentColor; }
-    .subpools-grid { display: flex; flex-direction: column; gap: 10px; }
-    .subpool-card {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 14px;
-    }
-    .subpool-title {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 0.88rem; font-weight: 650; color: var(--text);
-      margin-bottom: 6px;
-    }
-    .win-row {
-      display: flex; justify-content: space-between; align-items: center;
-      gap: 14px; padding: 9px 0;
-      border-top: 1px solid var(--border);
-    }
-    .win-info { min-width: 0; }
-    .win-label { font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; }
-    .win-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
-    .bar-wrap { width: 100px; height: 7px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
-    .bar { height: 100%; border-radius: 999px; }
+    .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+    .kpi-val { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 2px; }
+    .muted { color: var(--muted); font-size: 0.79rem; }
 
-    .badge {
-      padding: 2px 7px; border-radius: 6px;
-      font-size: 0.76rem; font-weight: 600;
-      background: var(--surface-inset); color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    .badge.is-ok { color: var(--ok); border-color: rgba(16, 185, 129, 0.28); }
-    .badge.is-warn { color: var(--warn); border-color: rgba(245, 158, 11, 0.28); }
-    .badge.is-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.28); }
-
-    /* Details Table inside Antigravity */
-    details { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
-    summary {
-      display: inline-flex; align-items: center; gap: 6px;
-      cursor: pointer; color: var(--muted); font-size: 0.83rem; font-weight: 500;
-    }
-    summary:hover { color: var(--text); }
-    .table-tools { margin: 10px 0 8px; }
-    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
-    tr:last-child td { border-bottom: 0; }
-    th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-inset); }
-
-    /* Controls */
+    /* Compact Command & Sync Bar */
     .actions {
       display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-      padding: 12px;
+      padding: 10px 12px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
+      margin-bottom: 16px;
     }
-    .input-wrap { position: relative; flex: 1; min-width: 190px; display: flex; align-items: center; }
+    .input-wrap { position: relative; flex: 1; min-width: 210px; display: flex; align-items: center; }
     input {
       width: 100%;
       background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 8px 34px 8px 11px; font-size: 0.85rem; outline: none;
+      border: 1px solid var(--border); border-radius: 7px;
+      padding: 8px 34px 8px 11px; font-size: 0.84rem; outline: none;
       transition: border-color 150ms var(--ease);
     }
     input:focus { border-color: var(--accent); }
@@ -462,19 +390,111 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     .btn {
       display: inline-flex; align-items: center; gap: 6px;
       background: var(--accent); border: 1px solid transparent; color: #fff;
-      border-radius: 8px; padding: 8px 13px; font-size: 0.85rem; font-weight: 600;
+      border-radius: 7px; padding: 8px 13px; font-size: 0.83rem; font-weight: 600;
       cursor: pointer;
       transition: background-color 150ms var(--ease), transform 150ms var(--ease), opacity 150ms var(--ease);
     }
     .btn:hover { background: var(--accent-hover); }
-    .btn:active { transform: scale(0.96); }
+    .btn:active { transform: scale(0.98); }
     .btn.sec { background: var(--surface-inset); border-color: var(--border-strong); color: var(--text); }
-    .btn.sec:hover { background: #222b3a; }
+    .btn.sec:hover { background: #1e2634; }
     pre {
       background: var(--surface); border: 1px solid var(--border);
-      padding: 12px; border-radius: 10px; font-size: 0.78rem; overflow: auto;
-      display: none; margin-top: 10px;
+      padding: 12px 14px; border-radius: 8px; font-size: 0.77rem; overflow: auto;
+      display: none; margin: 0 0 16px;
     }
+
+    /* Provider Sections & Flat Hairline Pools */
+    .pools { display: flex; flex-direction: column; gap: 16px; }
+    .secondary-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 760px) {
+      .secondary-grid {
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      }
+    }
+    .provider-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+    .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 0.96rem; font-weight: 650; letter-spacing: -0.01em; }
+    .provider-logo {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      background: var(--surface-inset);
+      border: 1px solid var(--border-strong);
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+    .provider-logo svg { width: 15px; height: 15px; fill: currentColor; }
+    .provider-logo.is-ag { color: #60a5fa; }
+    .provider-logo.is-gh { color: #f0f6fc; }
+    .provider-logo.is-gemini { color: #60a5fa; }
+    .kpi-logo { width: 15px; height: 15px; display: inline-flex; align-items: center; }
+    .kpi-logo svg { width: 15px; height: 15px; fill: currentColor; }
+
+    .subpools-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      border-top: 1px solid var(--border);
+    }
+    .pool-cell {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .pool-cell:last-child { border-bottom: 0; padding-bottom: 2px; }
+    .pool-cell-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .pool-cell-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .win-row {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 14px; padding: 7px 0;
+    }
+    .win-info { min-width: 0; }
+    .win-label { font-size: 0.82rem; font-weight: 500; color: var(--text); margin-bottom: 1px; }
+    .win-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .bar-wrap { width: 108px; height: 6px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; border-radius: 999px; transition: width 250ms var(--ease); }
+
+    .badge {
+      padding: 2px 7px; border-radius: 5px;
+      font-size: 0.74rem; font-weight: 600;
+      background: var(--surface-inset); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .badge.is-ok { color: var(--ok); border-color: rgba(16, 185, 129, 0.28); }
+    .badge.is-warn { color: var(--warn); border-color: rgba(245, 158, 11, 0.28); }
+    .badge.is-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.28); }
+
+    /* Details Table inside Antigravity */
+    details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    summary {
+      display: inline-flex; align-items: center; gap: 6px;
+      cursor: pointer; color: var(--muted); font-size: 0.82rem; font-weight: 500;
+    }
+    summary:hover { color: var(--text); }
+    .table-tools { margin: 10px 0 8px; }
+    .table-wrap { overflow-x: auto; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--border); font-size: 0.83rem; }
+    tr:last-child td { border-bottom: 0; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-inset); }
+
     svg.lucide { width: 15px; height: 15px; stroke-width: 1.85; flex-shrink: 0; }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
@@ -507,13 +527,13 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       </div>
     </header>
 
-    <section class="grid">
-      <div class="card">
+    <section class="kpi-strip">
+      <div class="kpi-cell">
         <div class="kpi-label"><span class="kpi-logo" style="color:#60a5fa">${SVG_AG}</span><span>Antigravity 5h Reset</span></div>
         <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : '—'}</div>
         <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : '<span data-i18n="waitingNextCycle">Menunggu siklus berikutnya</span>'}</div>
       </div>
-      <div class="card">
+      <div class="kpi-cell">
         <div class="kpi-label"><span class="kpi-logo" style="color:#f0f6fc">${SVG_GH}</span><span>GitHub Copilot</span></div>
         <div class="kpi-val num">${copilot?.quota_percent ?? '—'}%</div>
         <div class="muted num">${
@@ -524,11 +544,21 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
               : `<span data-i18n="inactive">Tidak aktif</span>`
         }</div>
       </div>
-      <div class="card">
+      <div class="kpi-cell">
         <div class="kpi-label"><i data-lucide="zap"></i><span data-i18n="lastWakeTitle">Auto-Wake Terakhir</span></div>
-        <div style="font-size:0.86rem;margin-top:8px;">${lastWake}</div>
+        <div style="font-size:0.84rem;margin-top:8px;">${lastWake}</div>
       </div>
     </section>
+
+    <section class="actions">
+      <div class="input-wrap">
+        <input id="tok" type="password" data-i18n-placeholder="tokenPlaceholder" placeholder="Contoh: qra-9f4a2c8e..." aria-label="X-Auth-Token" autocomplete="off" />
+        <button id="toggleTok" type="button" class="eye-btn" title="Tampilkan token"><i data-lucide="eye"></i></button>
+      </div>
+      <button id="btnSync" class="btn" type="button"><i data-lucide="refresh-cw"></i><span data-i18n="btnSyncTick">Jalankan sinkronisasi</span></button>
+      <button id="btnWake" class="btn sec" type="button"><i data-lucide="zap"></i><span data-i18n="btnForceWake">Kirim wake sekarang</span></button>
+    </section>
+    <pre id="out"></pre>
 
     <section class="pools">
       <div class="provider-card">
@@ -561,16 +591,6 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           : ''
       }
     </section>
-
-    <section class="actions">
-      <div class="input-wrap">
-        <input id="tok" type="password" data-i18n-placeholder="tokenPlaceholder" placeholder="Contoh: qra-9f4a2c8e..." aria-label="X-Auth-Token" autocomplete="off" />
-        <button id="toggleTok" type="button" class="eye-btn" title="Tampilkan token"><i data-lucide="eye"></i></button>
-      </div>
-      <button class="btn" type="button" onclick="callApi('/api/automation/tick')"><i data-lucide="refresh-cw"></i><span data-i18n="btnSyncTick">Jalankan sinkronisasi</span></button>
-      <button class="btn sec" type="button" onclick="callApi('/api/automation/wake')"><i data-lucide="zap"></i><span data-i18n="btnForceWake">Kirim wake sekarang</span></button>
-    </section>
-    <pre id="out"></pre>
   </div>
 
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
@@ -770,6 +790,11 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         if (window.lucide) window.lucide.createIcons({ root: toggleTok });
       });
     }
+
+    const btnSync = document.getElementById('btnSync');
+    const btnWake = document.getElementById('btnWake');
+    if (btnSync) btnSync.addEventListener('click', () => callApi('/api/automation/tick'));
+    if (btnWake) btnWake.addEventListener('click', () => callApi('/api/automation/wake'));
 
     if (tokInput) {
       tokInput.addEventListener('keydown', (e) => {
