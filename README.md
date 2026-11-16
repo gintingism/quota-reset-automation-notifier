@@ -89,11 +89,11 @@ npm run deploy
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `AUTO_WAKE_ENABLED` | `"true"` | Enable or disable automatic wake pings |
-| `WAKE_GEMINI_MODEL` | `"gemini-3.1-pro-low"` | Model used to wake the Gemini 5h pool (auto-prefers `-low` variants, falls back to `gemini-3-flash`) |
+| `WAKE_GEMINI_MODEL` | `"gemini-3-flash"` | Model used to wake the Gemini 5h pool (auto-prefers `flash-lite`/`-low` variants) |
 | `WAKE_CLAUDE_MODEL` | `"claude-sonnet-5-5-low"` | Model used to wake the Claude & GPT 5h pool (auto-prefers `-low` variants) |
 | `WAKE_ARGON_MODEL` | `"gemini-4-argon-low"` | Model used to wake the Gemini 4 Argon pool if a 5h window is active |
-| `WAKE_PROMPT` | `"1+1"` | Prompt text sent on wake |
-| `WAKE_MAX_OUTPUT_TOKENS` | `"16"` | Output token cap for wake requests |
+| `WAKE_PROMPT` | `"1"` | Minimal prompt text sent on wake |
+| `WAKE_MAX_OUTPUT_TOKENS` | `"4"` | Output token cap for wake requests (`thinkingBudget: 0` enabled by default) |
 | `WAKE_TIME_WINDOW` | `""` | Optional local window like `"07:00-23:00"`, empty for 24/7 |
 | `TIMEZONE_OFFSET_HOURS` | `"7"` | UTC offset in hours (`7` for WIB) |
 | `LOW_QUOTA_THRESHOLD` | `"20"` | Percentage threshold for low-quota alerts |

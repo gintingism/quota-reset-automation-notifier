@@ -385,10 +385,13 @@ function refreshAlarmSchedule() {
   });
 }
 
+let autoSyncTriggered = false;
+const STALE_SYNC_MS = 3 * 60 * 1000;
+
 function render() {
   chrome.storage.local.get(
-    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync', 'uiLang'],
-    ({ geminiUsage, workerUrl, authToken, lastWorkerSync, uiLang }) => {
+    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync', 'lastSyncError', 'uiLang'],
+    ({ geminiUsage, workerUrl, authToken, lastWorkerSync, lastSyncError, uiLang }) => {
       state.lang = uiLang === 'en' ? 'en' : 'id';
       applyStaticTranslations();
       const dict = t();
@@ -455,9 +458,19 @@ function render() {
         state.lastUpdatedIso = geminiUsage.lastUpdated || null;
       }
 
-      const syncLabel = lastWorkerSync || dict.notSyncedYet;
-      document.getElementById('syncStatus').textContent = `Worker: ${syncLabel}`;
-      setSyncDot(lastWorkerSync);
+      if (!autoSyncTriggered) {
+        autoSyncTriggered = true;
+        const updatedMs = geminiUsage?.lastUpdated ? Date.parse(geminiUsage.lastUpdated) : 0;
+        if (!updatedMs || Date.now() - updatedMs > STALE_SYNC_MS) {
+          chrome.runtime.sendMessage({ action: 'START_SYNC' });
+        }
+      }
+
+      const syncLabel = lastSyncError || lastWorkerSync || dict.notSyncedYet;
+      document.getElementById('syncStatus').textContent = lastSyncError
+        ? `Gemini: ${lastSyncError}`
+        : `Worker: ${syncLabel}`;
+      setSyncDot(lastSyncError ? `error ${lastSyncError}` : lastWorkerSync);
 
       tickLiveCountdowns();
       fetchWorkerOverview(workerUrl, authToken);
@@ -486,11 +499,20 @@ document.getElementById('toggleTokenBtn').addEventListener('click', () => {
   if (window.lucide) window.lucide.createIcons({ root: btn });
 });
 
-document.getElementById('saveBtn').addEventListener('click', () => {
+document.getElementById('saveBtn').addEventListener('click', async () => {
   const workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
   const authToken = document.getElementById('authToken').value.trim();
   const label = document.getElementById('saveBtnLabel');
   const dict = t();
+
+  if (workerUrl && !workerUrl.endsWith('.workers.dev') && chrome.permissions?.request) {
+    try {
+      const origin = `${new URL(workerUrl).origin}/*`;
+      await chrome.permissions.request({ origins: [origin] });
+    } catch {
+      // Ignore if invalid URL or permission declined
+    }
+  }
 
   chrome.storage.local.set({ workerUrl, authToken }, () => {
     label.textContent = dict.btnSaved;
@@ -517,6 +539,9 @@ document.getElementById('syncBtn').addEventListener('click', () => {
   document.getElementById('syncStatus').textContent = `Worker: ${dict.btnSyncing}`;
   setSyncDot('syncing');
   chrome.runtime.sendMessage({ action: 'START_SYNC' });
+  chrome.runtime.sendMessage({ action: 'FORCE_TICK' }, () => {
+    void chrome.runtime.lastError;
+  });
 
   setTimeout(() => {
     syncBtn.disabled = false;

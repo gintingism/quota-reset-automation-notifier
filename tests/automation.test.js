@@ -12,7 +12,8 @@ import {
   parseSseResponse,
   normalizeLowModelId,
 } from '../src/cloudcode.js';
-import { pickPoolModel } from '../src/index.js';
+import { pickPoolModel, getPoolCandidateModels } from '../src/index.js';
+import { renderDashboardHtml } from '../src/dashboard.js';
 import { parseCopilotUserResponse } from '../src/copilot.js';
 import { sendDedupedAlert } from '../src/notifier.js';
 import {
@@ -129,15 +130,18 @@ test('parseAntigravityModels filters internal/blacklisted models and extracts we
   assert.equal(parsed.groups[0].windows[0].label, 'Weekly limit');
 });
 
-test('parseSseResponse extracts reply text and token usage', () => {
+test('parseSseResponse extracts reply text and token breakdown', () => {
   const sse = [
-    'data: {"response":{"candidates":[{"content":{"parts":[{"thought":true,"text":"thinking"},{"text":"Hi!"}]}}],"usageMetadata":{"totalTokenCount":42}},"traceId":"tr_1"}',
+    'data: {"response":{"candidates":[{"content":{"parts":[{"thought":true,"text":"thinking"},{"text":"Hi!"}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":2,"thoughtsTokenCount":0,"totalTokenCount":10}},"traceId":"tr_1"}',
     'data: [DONE]',
   ].join('\n');
 
   const res = parseSseResponse(sse, 'gemini-3-flash');
   assert.equal(res.reply, 'Hi!');
-  assert.equal(res.totalTokens, 42);
+  assert.equal(res.promptTokens, 8);
+  assert.equal(res.outputTokens, 2);
+  assert.equal(res.thoughtsTokens, 0);
+  assert.equal(res.totalTokens, 10);
   assert.equal(res.traceId, 'tr_1');
 });
 
@@ -222,7 +226,7 @@ test('computeBurnRateForecast detects on_track vs over_pace depletion', () => {
   assert.equal(fast.depletionMs, 3600 * 1000);
 });
 
-test('normalizeLowModelId and pickPoolModel always select -low models over -medium/-high', () => {
+test('normalizeLowModelId and pickPoolModel always select lightest low/flash models over -medium/-high', () => {
   assert.equal(normalizeLowModelId('claude-sonnet-5-5-medium'), 'claude-sonnet-5-5-low');
   assert.equal(normalizeLowModelId('gemini-3.8-flash-high'), 'gemini-3.8-flash-low');
   assert.equal(normalizeLowModelId('gemini-4-argon-medium'), 'gemini-4-argon-low');
@@ -232,6 +236,7 @@ test('normalizeLowModelId and pickPoolModel always select -low models over -medi
       { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)' },
       { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)' },
       { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
+      { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
       { id: 'claude-sonnet-4-6-medium', name: 'Claude Sonnet 4.6 (Medium)' },
       { id: 'claude-sonnet-4-6-low', name: 'Claude Sonnet 4.6 (Low)' },
       { id: 'gemini-4-argon-medium', name: 'Gemini 4 Argon (Medium)' },
@@ -241,7 +246,11 @@ test('normalizeLowModelId and pickPoolModel always select -low models over -medi
 
   assert.equal(
     pickPoolModel(snapshot, 'Gemini Models', 'gemini-3.1-pro-high'),
-    'gemini-3.1-pro-low',
+    'gemini-3.5-flash-lite',
+  );
+  assert.deepEqual(
+    getPoolCandidateModels(snapshot, 'Gemini Models', 'gemini-3.1-pro-high'),
+    ['gemini-3.5-flash-lite', 'gemini-3-flash', 'gemini-3.1-pro-low'],
   );
   assert.equal(
     pickPoolModel(snapshot, 'Claude and GPT models', 'claude-sonnet-5-5-medium'),
@@ -251,4 +260,48 @@ test('normalizeLowModelId and pickPoolModel always select -low models over -medi
     pickPoolModel(snapshot, 'Gemini 4 Argon', 'gemini-4-argon-medium'),
     'gemini-4-argon-low',
   );
+});
+
+test('renderDashboardHtml renders wake decisions, token breakdown, and burn-rate forecast', () => {
+  const html = renderDashboardHtml(
+    {
+      fetched_at: Math.floor(Date.now() / 1000),
+      providers: {
+        antigravity: {
+          plan_tier: 'pro',
+          wake_decisions: { gemini: { modelId: 'gemini-3-flash', shouldTrigger: false, reason: 'cooldown_active' } },
+          groups: [
+            {
+              name: 'Gemini Models',
+              windows: [{ label: '5h limit', remaining_percent: 100, reset_at: null }],
+            },
+          ],
+          models: [],
+        },
+        gemini_web: {
+          plan_tier: 'AI Pro',
+          daily_used: 15,
+          daily_reset_label: '14:00',
+          daily_reset_at: new Date(Date.now() + 3 * 3600 * 1000).toISOString(),
+          weekly_used: 10,
+          weekly_reset_label: '20 Nov',
+          weekly_reset_at: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
+        },
+      },
+    },
+    {
+      lastWakeResult: {
+        model: 'gemini-3-flash',
+        reply: '2',
+        totalTokens: 12,
+        thoughtsTokens: 0,
+        triggeredAt: new Date().toISOString(),
+      },
+    },
+    7,
+  );
+
+  assert.match(html, /cooldown_active/);
+  assert.match(html, /12 tok \(think:0\)/);
+  assert.match(html, /Laju aman/);
 });

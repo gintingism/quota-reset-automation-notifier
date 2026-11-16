@@ -12,8 +12,16 @@ const USER_AGENT = 'antigravity/hub/2.24.0 linux/x64';
 const KV_PROJECT_KEY = 'cloudcode:project_info';
 const PROJECT_CACHE_TTL_SEC = 24 * 60 * 60;
 
-const ANTIGRAVITY_SYSTEM_PROMPT =
-  'You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**';
+const MINIMAL_WAKE_SYSTEM_PROMPT = 'Reply ok.';
+
+export class CloudCodeLimitError extends Error {
+  constructor(message, status, code) {
+    super(message);
+    this.name = 'CloudCodeLimitError';
+    this.status = status;
+    this.code = code;
+  }
+}
 
 const MODEL_BLACKLIST = new Set([
   'chat_20706',
@@ -331,17 +339,10 @@ export function normalizeLowModelId(modelId) {
   return modelId.trim().replace(/-(?:medium|high)$/i, '-low');
 }
 
-/**
- * Send a minimal prompt ("1+1") via streamGenerateContent?alt=sse to start the quota rolling timer.
- */
-export async function triggerAutoWake(accessToken, projectId, options = {}) {
-  const model = normalizeLowModelId(options.model) || 'gemini-3-flash';
-  const prompt = options.prompt || '1+1';
-  const maxOutputTokens = Number(options.maxOutputTokens) || 16;
-
+function buildWakeBody(projectId, model, prompt, maxOutputTokens, includeThinkingZero) {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
-  const body = {
+  return {
     project: projectId || `projects/random-${rand}/locations/global`,
     requestId: `req_${ts}_${rand}`,
     model,
@@ -350,38 +351,111 @@ export async function triggerAutoWake(accessToken, projectId, options = {}) {
     request: {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       session_id: `sess_${ts}_${rand}`,
-      systemInstruction: { parts: [{ text: ANTIGRAVITY_SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: MINIMAL_WAKE_SYSTEM_PROMPT }] },
       generationConfig: {
         ...(maxOutputTokens > 0 ? { maxOutputTokens } : {}),
         temperature: 0,
+        ...(includeThinkingZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
     },
   };
+}
 
-  const url = `${CLOUDCODE_BASE_URLS[0]}/v1internal:streamGenerateContent?alt=sse`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'User-Agent': USER_AGENT,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+function classifyLimitError(status, errText) {
+  const upper = (errText || '').toUpperCase();
+  if (status === 429 || upper.includes('RESOURCE_EXHAUSTED')) {
+    return new CloudCodeLimitError(
+      `Auto-Wake rate limited (${status}): ${errText.slice(0, 200)}`,
+      status,
+      'rate_limited',
+    );
+  }
+  if (
+    status === 403 &&
+    (upper.includes('VALIDATION_REQUIRED') ||
+      upper.includes('TOS_VIOLATION') ||
+      upper.includes('PERMISSION_DENIED'))
+  ) {
+    const code = upper.includes('VALIDATION_REQUIRED') ? 'validation_required' : 'forbidden';
+    return new CloudCodeLimitError(
+      `Auto-Wake blocked (${status} ${code}): ${errText.slice(0, 200)}`,
+      status,
+      code,
+    );
+  }
+  return null;
+}
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Auto-Wake stream failed (${res.status}): ${errText.slice(0, 200)}`);
+/**
+ * Send a minimal prompt ("1") via streamGenerateContent?alt=sse to start the quota rolling timer.
+ */
+export async function triggerAutoWake(accessToken, projectId, options = {}) {
+  const model = normalizeLowModelId(options.model) || 'gemini-3-flash';
+  const prompt = options.prompt || '1';
+  const maxOutputTokens = Number(options.maxOutputTokens) || 4;
+  const disableThinking = options.disableThinking !== false;
+
+  const tryModes = disableThinking ? [true, false] : [false];
+  let lastError;
+
+  for (const useThinkingZero of tryModes) {
+    const body = buildWakeBody(projectId, model, prompt, maxOutputTokens, useThinkingZero);
+
+    for (const baseUrl of CLOUDCODE_BASE_URLS) {
+      const url = `${baseUrl}/v1internal:streamGenerateContent?alt=sse`;
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'User-Agent': USER_AGENT,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        lastError = err;
+        continue;
+      }
+
+      if (res.ok) {
+        const sseText = await res.text();
+        return parseSseResponse(sseText, model);
+      }
+
+      const errText = await res.text();
+      const limitErr = classifyLimitError(res.status, errText);
+      if (limitErr) throw limitErr;
+
+      if (res.status >= 500 || res.status === 404) {
+        lastError = new Error(`Auto-Wake stream failed (${res.status}) at ${baseUrl}`);
+        continue;
+      }
+
+      if (
+        res.status === 400 &&
+        useThinkingZero &&
+        /thinking/i.test(errText)
+      ) {
+        lastError = new Error(`Auto-Wake rejected thinkingBudget=0 (${res.status})`);
+        break;
+      }
+
+      throw new Error(`Auto-Wake stream failed (${res.status}): ${errText.slice(0, 200)}`);
+    }
   }
 
-  const sseText = await res.text();
-  return parseSseResponse(sseText, model);
+  throw lastError || new Error('Auto-Wake stream failed on all endpoints');
 }
 
 export function parseSseResponse(sseText, model) {
   const replyParts = [];
-  let totalTokens;
-  let traceId;
+  let promptTokens = null;
+  let outputTokens = null;
+  let thoughtsTokens = null;
+  let totalTokens = null;
+  let traceId = null;
 
   for (const rawLine of sseText.split('\n')) {
     const line = rawLine.trim();
@@ -401,10 +475,13 @@ export function parseSseResponse(sseText, model) {
         }
       }
       const usage = response?.usageMetadata || obj.usageMetadata;
-      if (usage?.totalTokenCount !== undefined) {
-        totalTokens = usage.totalTokenCount;
+      if (usage) {
+        if (usage.promptTokenCount !== undefined) promptTokens = usage.promptTokenCount;
+        if (usage.candidatesTokenCount !== undefined) outputTokens = usage.candidatesTokenCount;
+        if (usage.thoughtsTokenCount !== undefined) thoughtsTokens = usage.thoughtsTokenCount;
+        if (usage.totalTokenCount !== undefined) totalTokens = usage.totalTokenCount;
       }
-      traceId ??= obj.traceId;
+      traceId ??= obj.traceId ?? null;
     } catch {
       // ignore malformed SSE chunk
     }
@@ -413,8 +490,11 @@ export function parseSseResponse(sseText, model) {
   return {
     model,
     reply: replyParts.join('').trim() || '(ok)',
-    totalTokens: totalTokens ?? null,
-    traceId: traceId ?? null,
+    promptTokens,
+    outputTokens,
+    thoughtsTokens,
+    totalTokens,
+    traceId,
     triggeredAt: new Date().toISOString(),
   };
 }

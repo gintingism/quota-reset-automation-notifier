@@ -13,6 +13,9 @@
     "https://gemini.google.com/*",
     "https://*.workers.dev/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

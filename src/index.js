@@ -9,6 +9,7 @@ import {
   fetchAntigravityQuota,
   triggerAutoWake,
   normalizeLowModelId,
+  CloudCodeLimitError,
 } from './cloudcode.js';
 import { shouldTriggerOnReset, isWithinTimeWindow } from './wake_engine.js';
 import { loadDedupState, saveDedupState, sendDedupedAlert, sendAlert } from './notifier.js';
@@ -18,6 +19,8 @@ import { renderDashboardHtml } from './dashboard.js';
 const MAX_BODY_BYTES = 64 * 1024;
 const WAKE_STATE_KEY = 'wake:state';
 const LATEST_KEY = 'latest';
+const RATE_LIMIT_BLOCK_MS = 30 * 60 * 1000;
+const VALIDATION_BLOCK_MS = 6 * 3600 * 1000;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,53 +76,59 @@ function isMediumOrHighTierModel(m) {
   );
 }
 
-export function pickPoolModel(agSnapshot, poolName, preferredId) {
+export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
   const models = agSnapshot?.models || [];
   const normalizedPreferred = normalizeLowModelId(preferredId);
-  const preferredEntry = models.find((m) => m.id === normalizedPreferred);
-  if (preferredEntry && isLowTierModel(preferredEntry) && !isMediumOrHighTierModel(preferredEntry)) {
-    return preferredEntry.id;
+  const lower = (poolName || '').toLowerCase();
+  const safeModels = models.filter((m) => !isMediumOrHighTierModel(m));
+
+  const ranked = [];
+  const push = (id) => {
+    if (id && !ranked.includes(id)) ranked.push(id);
+  };
+
+  if (lower.includes('argon')) {
+    safeModels.filter((m) => m.id.includes('argon') && isLowTierModel(m)).forEach((m) => push(m.id));
+    safeModels.filter((m) => m.id.includes('argon')).forEach((m) => push(m.id));
+    push(normalizedPreferred || 'gemini-4-argon-low');
+    return ranked;
   }
 
-  const lower = (poolName || '').toLowerCase();
-  if (lower.includes('argon')) {
-    return (
-      models.find((m) => m.id.includes('argon') && isLowTierModel(m))?.id ||
-      models.find((m) => m.id.includes('argon') && !isMediumOrHighTierModel(m))?.id ||
-      normalizedPreferred ||
-      'gemini-4-argon-low'
-    );
-  }
   if (lower.includes('gemini')) {
-    return (
-      models.find(
-        (m) => m.id.includes('gemini') && !m.id.includes('argon') && m.id.includes('flash') && isLowTierModel(m),
-      )?.id ||
-      models.find((m) => m.id.includes('gemini') && !m.id.includes('argon') && isLowTierModel(m))?.id ||
-      (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
-      models.find((m) => m.id === 'gemini-3-flash')?.id ||
-      models.find((m) => m.id.includes('gemini') && !m.id.includes('argon') && !isMediumOrHighTierModel(m))?.id ||
-      normalizedPreferred ||
-      'gemini-3.1-pro-low'
-    );
+    const gem = safeModels.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
+    gem.filter((m) => m.id.includes('flash-lite')).forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash') && isLowTierModel(m)).forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash')).forEach((m) => push(m.id));
+    if (normalizedPreferred && gem.some((m) => m.id === normalizedPreferred)) {
+      push(normalizedPreferred);
+    }
+    gem.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
+    gem.forEach((m) => push(m.id));
+    push(normalizedPreferred || 'gemini-3-flash');
+    return ranked;
   }
+
   if (lower.includes('claude') || lower.includes('gpt')) {
-    return (
-      models.find((m) => m.id.includes('claude-sonnet') && isLowTierModel(m))?.id ||
-      models.find((m) => (m.id.includes('claude') || m.id.includes('gpt')) && isLowTierModel(m))?.id ||
-      (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
-      models.find((m) => m.id.includes('claude-sonnet') && !isMediumOrHighTierModel(m))?.id ||
-      models.find((m) => (m.id.includes('claude') || m.id.includes('gpt')) && !isMediumOrHighTierModel(m))?.id ||
-      normalizedPreferred ||
-      'claude-sonnet-5-5-low'
-    );
+    const cg = safeModels.filter((m) => m.id.includes('claude') || m.id.includes('gpt'));
+    cg.filter((m) => m.id.includes('claude-sonnet') && isLowTierModel(m)).forEach((m) => push(m.id));
+    cg.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
+    if (normalizedPreferred && cg.some((m) => m.id === normalizedPreferred)) {
+      push(normalizedPreferred);
+    }
+    cg.filter((m) => m.id.includes('claude-sonnet')).forEach((m) => push(m.id));
+    cg.forEach((m) => push(m.id));
+    push(normalizedPreferred || 'claude-sonnet-5-5-low');
+    return ranked;
   }
-  return (
-    models.find((m) => isLowTierModel(m))?.id ||
-    (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
-    models.find((m) => !isMediumOrHighTierModel(m))?.id ||
-    normalizedPreferred
-  );
+
+  safeModels.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
+  safeModels.forEach((m) => push(m.id));
+  push(normalizedPreferred);
+  return ranked;
+}
+
+export function pickPoolModel(agSnapshot, poolName, preferredId) {
+  return getPoolCandidateModels(agSnapshot, poolName, preferredId)[0];
 }
 
 /**
@@ -129,8 +138,10 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
   const nowMs = Date.now();
   const offsetHours = Number(env.TIMEZONE_OFFSET_HOURS ?? 7);
   const dedupState = await loadDedupState(env.QUOTA_KV);
+  const dedupBefore = JSON.stringify(dedupState);
   const wakeState = (env.QUOTA_KV ? await env.QUOTA_KV.get(WAKE_STATE_KEY, 'json') : null) || {};
   wakeState.pools = wakeState.pools || {};
+  let wakeStateDirty = false;
   const existingLatest = env.QUOTA_KV ? await env.QUOTA_KV.get(LATEST_KEY, 'json') : null;
   const providers = {};
   if (existingLatest?.providers?.gemini_web) {
@@ -191,17 +202,21 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
           poolKey === 'argon'
             ? env.WAKE_ARGON_MODEL || 'gemini-4-argon-low'
             : poolKey === 'gemini'
-              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3.1-pro-low'
+              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3-flash'
               : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-low';
-        const modelId = pickPoolModel(agSnapshot, group.name, preferredModel);
+        const candidates = getPoolCandidateModels(agSnapshot, group.name, preferredModel);
+        const modelId = candidates[0];
         if (!modelId) continue;
 
         const poolState = wakeState.pools[poolKey] || {};
+        const isBlocked = typeof poolState.blockedUntil === 'number' && nowMs < poolState.blockedUntil;
         let decision;
         if (options.forceWake) {
           decision = { shouldTrigger: true, reason: 'manual_force' };
         } else if (!wakeEnabled) {
           decision = { shouldTrigger: false, reason: 'disabled' };
+        } else if (isBlocked) {
+          decision = { shouldTrigger: false, reason: `blocked:${poolState.blockCode || 'limit'}` };
         } else if (!inWindow) {
           decision = { shouldTrigger: false, reason: 'outside_time_window' };
         } else if (weeklyWin && weeklyWin.remaining_fraction <= 0) {
@@ -213,25 +228,78 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         summary.wakeDecisions[poolKey] = { modelId, ...decision };
 
         if (decision.shouldTrigger) {
-          const wakeResult = await triggerAutoWake(accessToken, projectInfo.projectId, {
-            model: modelId,
-            prompt: env.WAKE_PROMPT || '1+1',
-            maxOutputTokens: env.WAKE_MAX_OUTPUT_TOKENS || 16,
-          });
-          wakeResult.pool = group.name;
+          let wakeResult = null;
+          let lastWakeErr = null;
 
+          for (const candidateModel of candidates.slice(0, 3)) {
+            try {
+              wakeResult = await triggerAutoWake(accessToken, projectInfo.projectId, {
+                model: candidateModel,
+                prompt: env.WAKE_PROMPT || '1',
+                maxOutputTokens: env.WAKE_MAX_OUTPUT_TOKENS || 4,
+              });
+              break;
+            } catch (err) {
+              lastWakeErr = err;
+              if (err instanceof CloudCodeLimitError) {
+                const blockMs = err.code === 'rate_limited' ? RATE_LIMIT_BLOCK_MS : VALIDATION_BLOCK_MS;
+                wakeState.pools[poolKey] = {
+                  ...poolState,
+                  blockedUntil: nowMs + blockMs,
+                  blockCode: err.code,
+                };
+                wakeStateDirty = true;
+                summary.wakeDecisions[poolKey] = {
+                  modelId: candidateModel,
+                  shouldTrigger: false,
+                  reason: `blocked:${err.code}`,
+                };
+                await sendDedupedAlert(
+                  env,
+                  dedupState,
+                  `limit:ag:${poolKey}`,
+                  `${err.code}:${Math.floor(nowMs / 3600000)}`,
+                  `🛑 <b>Auto-Wake Paused (${group.name})</b>\nAlasan: <code>${err.code}</code>\n${err.message}`,
+                );
+                break;
+              }
+              if (!/failed \((?:400|404)\)/.test(err?.message || '')) {
+                throw err;
+              }
+            }
+          }
+
+          if (!wakeResult) {
+            if (lastWakeErr && !(lastWakeErr instanceof CloudCodeLimitError)) {
+              throw lastWakeErr;
+            }
+            continue;
+          }
+
+          wakeResult.pool = group.name;
           wakeState.pools[poolKey] = {
             lastTriggerAt: nowMs,
             lastTriggeredResetAt: fiveHourWin.reset_time_iso || null,
             lastWakeResult: wakeResult,
           };
           wakeState.lastWakeResult = wakeResult;
+          wakeStateDirty = true;
           summary.wakes.push(wakeResult);
+          summary.wakeDecisions[poolKey] = { modelId: wakeResult.model, ...decision };
 
           if (isTrue(env.NOTIFY_ON_WAKE, true)) {
+            const tokenParts = [];
+            if (wakeResult.promptTokens !== null) tokenParts.push(`in:${wakeResult.promptTokens}`);
+            if (wakeResult.thoughtsTokens !== null) tokenParts.push(`think:${wakeResult.thoughtsTokens}`);
+            if (wakeResult.outputTokens !== null) tokenParts.push(`out:${wakeResult.outputTokens}`);
+            const tokenStr =
+              wakeResult.totalTokens !== null
+                ? `${wakeResult.totalTokens}${tokenParts.length ? ` (${tokenParts.join(', ')})` : ''}`
+                : 'n/a';
+
             await sendAlert(
               env,
-              `🚀 <b>Auto-Wake Executed (${group.name})</b>\nModel: <code>${wakeResult.model}</code>\nReply: <code>${wakeResult.reply.slice(0, 120)}</code>\nTokens: ${wakeResult.totalTokens ?? 'n/a'}`,
+              `🚀 <b>Auto-Wake Executed (${group.name})</b>\nModel: <code>${wakeResult.model}</code>\nReply: <code>${wakeResult.reply.slice(0, 120)}</code>\nTokens: ${tokenStr}`,
             );
           }
         } else if (
@@ -240,7 +308,8 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
           fiveHourWin.reset_time_iso &&
           decision.reason !== 'safety_margin' &&
           decision.reason !== 'already_triggered_for_cycle' &&
-          decision.reason !== 'cooldown_active'
+          decision.reason !== 'cooldown_active' &&
+          !decision.reason.startsWith('blocked:')
         ) {
           const sent = await sendDedupedAlert(
             env,
@@ -253,7 +322,8 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         }
       }
 
-      if (summary.wakes.length > 0 && env.QUOTA_KV) {
+      agSnapshot.wake_decisions = summary.wakeDecisions;
+      if (wakeStateDirty && env.QUOTA_KV) {
         await env.QUOTA_KV.put(WAKE_STATE_KEY, JSON.stringify(wakeState));
       }
     } catch (err) {
@@ -332,10 +402,11 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
   };
 
   if (env.QUOTA_KV) {
-    await Promise.all([
-      env.QUOTA_KV.put(LATEST_KEY, JSON.stringify(snapshot)),
-      saveDedupState(env.QUOTA_KV, dedupState),
-    ]);
+    const kvWrites = [env.QUOTA_KV.put(LATEST_KEY, JSON.stringify(snapshot))];
+    if (JSON.stringify(dedupState) !== dedupBefore) {
+      kvWrites.push(saveDedupState(env.QUOTA_KV, dedupState));
+    }
+    await Promise.all(kvWrites);
   }
 
   return { summary, snapshot };

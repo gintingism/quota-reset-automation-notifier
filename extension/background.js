@@ -107,6 +107,13 @@ async function callBatchExecuteRpc(rpcId, atToken) {
   return decodeBatchExecuteEnvelope(text, rpcId);
 }
 
+class GeminiAuthError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'GeminiAuthError';
+  }
+}
+
 /**
  * Lightweight zero-iframe RPC fetch (<2 MB RAM, ~400ms) using Gemini's `jSf9Qc` and `otAQ7b` batchexecute endpoints.
  */
@@ -116,11 +123,11 @@ async function fetchGeminiViaRpc() {
     cache: 'no-store',
   });
   if (!pageResp.ok || (pageResp.redirected && pageResp.url.includes('accounts.google'))) {
-    throw new Error('Not logged into Gemini');
+    throw new GeminiAuthError('Not logged into Gemini');
   }
   const html = await pageResp.text();
   const atMatch = html.match(/"SNlM0e":"([^"]+)"/);
-  if (!atMatch) throw new Error('Missing SNlM0e token');
+  if (!atMatch) throw new GeminiAuthError('Not logged into Gemini');
   const atToken = atMatch[1];
 
   const [quotaPayload, policyPayload] = await Promise.all([
@@ -217,13 +224,18 @@ async function performSilentSync() {
   // Step 1: Try lightweight direct batchexecute RPC first (no offscreen iframe needed)
   try {
     const rpcData = await fetchGeminiViaRpc();
-    await chrome.storage.local.set({ geminiUsage: rpcData });
+    await chrome.storage.local.set({ geminiUsage: rpcData, lastSyncError: '' });
     updateBadge(rpcData);
     await pushToWorker(rpcData);
     isSyncing = false;
     return;
-  } catch {
-    // Fallback to hidden offscreen DOM scraper if RPC endpoint or session token changes
+  } catch (err) {
+    if (err instanceof GeminiAuthError) {
+      await chrome.storage.local.set({ lastSyncError: err.message });
+      isSyncing = false;
+      return;
+    }
+    // Fallback to hidden offscreen DOM scraper if RPC endpoint or payload format changes
   }
 
   try {
@@ -330,7 +342,7 @@ function updateBadge(data) {
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'SYNC_COMPLETE') {
-    chrome.storage.local.set({ geminiUsage: request.data }, async () => {
+    chrome.storage.local.set({ geminiUsage: request.data, lastSyncError: '' }, async () => {
       updateBadge(request.data);
       await pushToWorker(request.data);
       cleanupSyncWindow();
@@ -340,6 +352,24 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   } else if (request.action === 'START_SYNC') {
     performSilentSync();
     sendResponse({ ok: true });
+  } else if (request.action === 'FORCE_TICK') {
+    chrome.storage.local.get(['workerUrl', 'authToken'], async ({ workerUrl, authToken }) => {
+      if (!workerUrl || !authToken) {
+        sendResponse({ ok: false });
+        return;
+      }
+      try {
+        const base = workerUrl.replace(/\/+$/, '');
+        const res = await fetch(`${base}/api/automation/tick`, {
+          method: 'POST',
+          headers: { 'X-Auth-Token': authToken },
+        });
+        sendResponse({ ok: res.ok, status: res.status });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || 'Network error' });
+      }
+    });
+    return true;
   }
   return true;
 });

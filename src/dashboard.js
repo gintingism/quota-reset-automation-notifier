@@ -2,6 +2,8 @@
  * Lightweight HTML dashboard rendered from the latest KV snapshot (no secrets exposed).
  */
 
+import { computeBurnRateForecast } from './gemini_rpc.js';
+
 function escapeHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -63,8 +65,20 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
   const agResetMs = toEpochMs(ag?.rolling_reset_at);
 
+  const wakeDecisions = ag?.wake_decisions || {};
   const groupCards = groups
     .map((g) => {
+      const lowerName = (g.name || '').toLowerCase();
+      const poolKey = lowerName.includes('argon')
+        ? 'argon'
+        : lowerName.includes('gemini')
+          ? 'gemini'
+          : 'claude-gpt';
+      const decision = wakeDecisions[poolKey];
+      const decisionBadge = decision
+        ? `<span class="badge mono ${decision.shouldTrigger ? 'is-ok' : decision.reason?.startsWith('blocked:') ? 'is-danger' : ''}" title="${escapeHtml(decision.modelId || '')}">${escapeHtml(decision.reason || '')}</span>`
+        : '';
+
       const windowsHtml = (g.windows || [])
         .map((w) => {
           const pct = w.remaining_percent ?? 0;
@@ -91,7 +105,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 
       return `
         <div class="subpool-card">
-          <div class="subpool-title"><i data-lucide="box"></i><span>${escapeHtml(g.name)}</span></div>
+          <div class="subpool-title" style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px;">
+            <span style="display:inline-flex;align-items:center;gap:6px;"><i data-lucide="box"></i><span>${escapeHtml(g.name)}</span></span>
+            ${decisionBadge}
+          </div>
           ${windowsHtml}
         </div>`;
     })
@@ -153,6 +170,18 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const geminiWeeklyLeft = Math.max(0, 100 - (geminiWeb?.weekly_used ?? 0));
   const geminiDailyResetMs = toEpochMs(geminiWeb?.daily_reset_at);
   const geminiWeeklyResetMs = toEpochMs(geminiWeb?.weekly_reset_at);
+  const formatPaceLine = (usedPct, resetMs, hours) => {
+    const f = computeBurnRateForecast(usedPct, resetMs, hours);
+    if (!f) return '';
+    if (f.status === 'over_pace' && f.depletionMs) {
+      const min = Math.max(1, Math.round(f.depletionMs / 60000));
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      const dur = h > 0 ? `${h}j ${m}m` : `${m}m`;
+      return ` · <span style="color:var(--warn)">Boros (~${dur})</span>`;
+    }
+    return ` · Laju aman (${f.elapsedPct}%)`;
+  };
   const geminiCard = geminiWeb
     ? `<div class="provider-card">
         <div class="pool-header">
@@ -169,7 +198,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
               geminiDailyResetMs
                 ? `(<span class="countdown" data-reset-ms="${geminiDailyResetMs}">${escapeHtml(formatReset(geminiWeb.daily_reset_at, offsetHours).split(' (')[0])}</span>)`
                 : `<span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.daily_reset_label || '')}" data-gemini-kind="daily"></span>`
-            } · ${geminiWeb.daily_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
+            } · ${geminiWeb.daily_used ?? '—'}% <span data-i18n="usedWord">terpakai</span>${formatPaceLine(geminiWeb.daily_used ?? 0, geminiDailyResetMs, 5)}</div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiDailyLeft}%;background:${barColor(geminiDailyLeft)}"></div></div>
@@ -183,7 +212,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
               geminiWeeklyResetMs
                 ? `(<span class="countdown" data-reset-ms="${geminiWeeklyResetMs}">${escapeHtml(formatReset(geminiWeb.weekly_reset_at, offsetHours).split(' (')[0])}</span>)`
                 : `<span class="gemini-countdown" data-gemini-label="${escapeHtml(geminiWeb.weekly_reset_label || '')}" data-gemini-kind="weekly"></span>`
-            } · ${geminiWeb.weekly_used ?? '—'}% <span data-i18n="usedWord">terpakai</span></div>
+            } · ${geminiWeb.weekly_used ?? '—'}% <span data-i18n="usedWord">terpakai</span>${formatPaceLine(geminiWeb.weekly_used ?? 0, geminiWeeklyResetMs, 168)}</div>
           </div>
           <div class="win-right">
             <div class="bar-wrap"><div class="bar" style="width:${geminiWeeklyLeft}%;background:${barColor(geminiWeeklyLeft)}"></div></div>
@@ -193,8 +222,12 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       </div>`
     : '';
 
-  const lastWake = wakeState?.lastWakeResult
-    ? `<strong>${escapeHtml(wakeState.lastWakeResult.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeState.lastWakeResult.triggeredAt)}">${escapeHtml(wakeState.lastWakeResult.triggeredAt)}</span><br><span class="muted"><span data-i18n="replyLabel">Balasan</span>: "${escapeHtml(wakeState.lastWakeResult.reply)}"</span>`
+  const wakeRes = wakeState?.lastWakeResult;
+  const wakeTokenMeta = wakeRes && wakeRes.totalTokens !== null && wakeRes.totalTokens !== undefined
+    ? ` · <span class="num">${wakeRes.totalTokens} tok${wakeRes.thoughtsTokens !== null && wakeRes.thoughtsTokens !== undefined ? ` (think:${wakeRes.thoughtsTokens})` : ''}</span>`
+    : '';
+  const lastWake = wakeRes
+    ? `<strong>${escapeHtml(wakeRes.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeRes.triggeredAt)}">${escapeHtml(wakeRes.triggeredAt)}</span>${wakeTokenMeta}<br><span class="muted"><span data-i18n="replyLabel">Balasan</span>: "${escapeHtml(wakeRes.reply)}"</span>`
     : `<span class="muted" data-i18n="noWakeYet">Belum ada riwayat auto-wake</span>`;
 
   return `<!doctype html>
