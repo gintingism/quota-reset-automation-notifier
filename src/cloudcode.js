@@ -324,10 +324,18 @@ export async function fetchAntigravityQuota(accessToken, projectInfo) {
 }
 
 /**
- * Send a minimal prompt ("hi") via streamGenerateContent?alt=sse to start the quota rolling timer.
+ * Normalize any -medium or -high model suffix to -low so Auto-Wake always uses the lowest tier.
+ */
+export function normalizeLowModelId(modelId) {
+  if (!modelId || typeof modelId !== 'string') return '';
+  return modelId.trim().replace(/-(?:medium|high)$/i, '-low');
+}
+
+/**
+ * Send a minimal prompt ("1+1") via streamGenerateContent?alt=sse to start the quota rolling timer.
  */
 export async function triggerAutoWake(accessToken, projectId, options = {}) {
-  const model = options.model || 'gemini-3-flash';
+  const model = normalizeLowModelId(options.model) || 'gemini-3-flash';
   const prompt = options.prompt || '1+1';
   const maxOutputTokens = Number(options.maxOutputTokens) || 16;
 

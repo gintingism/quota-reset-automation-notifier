@@ -4,7 +4,12 @@
  */
 
 import { getAccessToken, AuthRevokedError } from './oauth.js';
-import { resolveProjectInfo, fetchAntigravityQuota, triggerAutoWake } from './cloudcode.js';
+import {
+  resolveProjectInfo,
+  fetchAntigravityQuota,
+  triggerAutoWake,
+  normalizeLowModelId,
+} from './cloudcode.js';
 import { shouldTriggerOnReset, isWithinTimeWindow } from './wake_engine.js';
 import { loadDedupState, saveDedupState, sendDedupedAlert, sendAlert } from './notifier.js';
 import { fetchCopilotQuota } from './copilot.js';
@@ -45,27 +50,76 @@ function validSyncPayload(payload) {
   );
 }
 
-function pickPoolModel(agSnapshot, poolName, preferredId) {
-  const models = agSnapshot.models || [];
-  if (preferredId && models.some((m) => m.id === preferredId)) {
-    return preferredId;
+function isLowTierModel(m) {
+  const id = (m.id || '').toLowerCase();
+  const name = (m.name || '').toLowerCase();
+  return (
+    id.endsWith('-low') ||
+    id.includes('-low-') ||
+    id.includes('flash-lite') ||
+    /\b(low|lite)\b/.test(name)
+  );
+}
+
+function isMediumOrHighTierModel(m) {
+  const id = (m.id || '').toLowerCase();
+  const name = (m.name || '').toLowerCase();
+  return (
+    id.endsWith('-medium') ||
+    id.endsWith('-high') ||
+    id.includes('-medium-') ||
+    id.includes('-high-') ||
+    /\b(medium|high)\b/.test(name)
+  );
+}
+
+export function pickPoolModel(agSnapshot, poolName, preferredId) {
+  const models = agSnapshot?.models || [];
+  const normalizedPreferred = normalizeLowModelId(preferredId);
+  const preferredEntry = models.find((m) => m.id === normalizedPreferred);
+  if (preferredEntry && isLowTierModel(preferredEntry) && !isMediumOrHighTierModel(preferredEntry)) {
+    return preferredEntry.id;
   }
-  const lower = poolName.toLowerCase();
+
+  const lower = (poolName || '').toLowerCase();
+  if (lower.includes('argon')) {
+    return (
+      models.find((m) => m.id.includes('argon') && isLowTierModel(m))?.id ||
+      models.find((m) => m.id.includes('argon') && !isMediumOrHighTierModel(m))?.id ||
+      normalizedPreferred ||
+      'gemini-4-argon-low'
+    );
+  }
   if (lower.includes('gemini')) {
     return (
+      models.find(
+        (m) => m.id.includes('gemini') && !m.id.includes('argon') && m.id.includes('flash') && isLowTierModel(m),
+      )?.id ||
+      models.find((m) => m.id.includes('gemini') && !m.id.includes('argon') && isLowTierModel(m))?.id ||
+      (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
       models.find((m) => m.id === 'gemini-3-flash')?.id ||
-      models.find((m) => m.id.includes('gemini'))?.id ||
-      preferredId
+      models.find((m) => m.id.includes('gemini') && !m.id.includes('argon') && !isMediumOrHighTierModel(m))?.id ||
+      normalizedPreferred ||
+      'gemini-3.1-pro-low'
     );
   }
   if (lower.includes('claude') || lower.includes('gpt')) {
     return (
-      models.find((m) => m.id.includes('claude-sonnet'))?.id ||
-      models.find((m) => m.id.includes('claude') || m.id.includes('gpt'))?.id ||
-      preferredId
+      models.find((m) => m.id.includes('claude-sonnet') && isLowTierModel(m))?.id ||
+      models.find((m) => (m.id.includes('claude') || m.id.includes('gpt')) && isLowTierModel(m))?.id ||
+      (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
+      models.find((m) => m.id.includes('claude-sonnet') && !isMediumOrHighTierModel(m))?.id ||
+      models.find((m) => (m.id.includes('claude') || m.id.includes('gpt')) && !isMediumOrHighTierModel(m))?.id ||
+      normalizedPreferred ||
+      'claude-sonnet-5-5-low'
     );
   }
-  return preferredId;
+  return (
+    models.find((m) => isLowTierModel(m))?.id ||
+    (preferredEntry && !isMediumOrHighTierModel(preferredEntry) ? preferredEntry.id : null) ||
+    models.find((m) => !isMediumOrHighTierModel(m))?.id ||
+    normalizedPreferred
+  );
 }
 
 /**
@@ -127,11 +181,18 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         if (!fiveHourWin) continue;
 
         const weeklyWin = (group.windows || []).find((w) => w.window_type === 'WEEKLY');
-        const poolKey = group.name.toLowerCase().includes('gemini') ? 'gemini' : 'claude-gpt';
+        const lowerGroup = group.name.toLowerCase();
+        const poolKey = lowerGroup.includes('argon')
+          ? 'argon'
+          : lowerGroup.includes('gemini')
+            ? 'gemini'
+            : 'claude-gpt';
         const preferredModel =
-          poolKey === 'gemini'
-            ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3-flash'
-            : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-medium';
+          poolKey === 'argon'
+            ? env.WAKE_ARGON_MODEL || 'gemini-4-argon-low'
+            : poolKey === 'gemini'
+              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3.1-pro-low'
+              : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-low';
         const modelId = pickPoolModel(agSnapshot, group.name, preferredModel);
         if (!modelId) continue;
 

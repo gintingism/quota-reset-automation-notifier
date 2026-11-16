@@ -7,7 +7,12 @@ import {
   RESET_SAFETY_MARGIN_MS,
   RESET_TRIGGER_COOLDOWN_MS,
 } from '../src/wake_engine.js';
-import { parseAntigravityModels, parseSseResponse } from '../src/cloudcode.js';
+import {
+  parseAntigravityModels,
+  parseSseResponse,
+  normalizeLowModelId,
+} from '../src/cloudcode.js';
+import { pickPoolModel } from '../src/index.js';
 import { parseCopilotUserResponse } from '../src/copilot.js';
 import { sendDedupedAlert } from '../src/notifier.js';
 import {
@@ -215,4 +220,35 @@ test('computeBurnRateForecast detects on_track vs over_pace depletion', () => {
   assert.equal(fast.status, 'over_pace');
   assert.equal(fast.willExhaustBeforeReset, true);
   assert.equal(fast.depletionMs, 3600 * 1000);
+});
+
+test('normalizeLowModelId and pickPoolModel always select -low models over -medium/-high', () => {
+  assert.equal(normalizeLowModelId('claude-sonnet-5-5-medium'), 'claude-sonnet-5-5-low');
+  assert.equal(normalizeLowModelId('gemini-3.8-flash-high'), 'gemini-3.8-flash-low');
+  assert.equal(normalizeLowModelId('gemini-4-argon-medium'), 'gemini-4-argon-low');
+
+  const snapshot = {
+    models: [
+      { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)' },
+      { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)' },
+      { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
+      { id: 'claude-sonnet-4-6-medium', name: 'Claude Sonnet 4.6 (Medium)' },
+      { id: 'claude-sonnet-4-6-low', name: 'Claude Sonnet 4.6 (Low)' },
+      { id: 'gemini-4-argon-medium', name: 'Gemini 4 Argon (Medium)' },
+      { id: 'gemini-4-argon-low', name: 'Gemini 4 Argon (Low)' },
+    ],
+  };
+
+  assert.equal(
+    pickPoolModel(snapshot, 'Gemini Models', 'gemini-3.1-pro-high'),
+    'gemini-3.1-pro-low',
+  );
+  assert.equal(
+    pickPoolModel(snapshot, 'Claude and GPT models', 'claude-sonnet-5-5-medium'),
+    'claude-sonnet-4-6-low',
+  );
+  assert.equal(
+    pickPoolModel(snapshot, 'Gemini 4 Argon', 'gemini-4-argon-medium'),
+    'gemini-4-argon-low',
+  );
 });
