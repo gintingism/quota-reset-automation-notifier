@@ -47,7 +47,7 @@ async function postCloudCode(path, body, accessToken) {
     if (res.status === 401) {
       throw new Error(`Cloud Code unauthorized (401) at ${path}`);
     }
-    if (res.status >= 500 || res.status === 404) {
+    if (res.status >= 500) {
       lastError = new Error(`Cloud Code ${res.status} at ${url}`);
       continue;
     }
@@ -411,6 +411,7 @@ export async function triggerAutoWake(accessToken, projectId, options = {}) {
             Authorization: `Bearer ${accessToken}`,
             'User-Agent': USER_AGENT,
             'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
           },
           body: JSON.stringify(body),
         });
@@ -428,7 +429,7 @@ export async function triggerAutoWake(accessToken, projectId, options = {}) {
       const limitErr = classifyLimitError(res.status, errText);
       if (limitErr) throw limitErr;
 
-      if (res.status >= 500 || res.status === 404) {
+      if (res.status >= 500) {
         lastError = new Error(`Auto-Wake stream failed (${res.status}) at ${baseUrl}`);
         continue;
       }

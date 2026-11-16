@@ -19,6 +19,7 @@ import { sendDedupedAlert } from '../src/notifier.js';
 import {
   decodeBatchExecuteEnvelope,
   parseGeminiRpcWindows,
+  parseGeminiGraphqlUsage,
   computeBurnRateForecast,
 } from '../src/gemini_rpc.js';
 
@@ -292,7 +293,9 @@ test('renderDashboardHtml renders wake decisions, token breakdown, and burn-rate
     {
       lastWakeResult: {
         model: 'gemini-3-flash',
-        reply: '2',
+        reply: '(ok)',
+        promptTokens: 8,
+        outputTokens: 4,
         totalTokens: 12,
         thoughtsTokens: 0,
         triggeredAt: new Date().toISOString(),
@@ -302,6 +305,39 @@ test('renderDashboardHtml renders wake decisions, token breakdown, and burn-rate
   );
 
   assert.match(html, /cooldown_active/);
-  assert.match(html, /12 tok \(think:0\)/);
+  assert.match(html, /12 tok \(in:8 · think:0 · out:4\)/);
   assert.match(html, /Laju aman/);
+  assert.match(html, /data-i18n="paceSafe"/);
+});
+
+test('parseGeminiGraphqlUsage extracts GXU_FIVE_HOURLY and GXU_WEEKLY pools', () => {
+  const parsed = parseGeminiGraphqlUsage({
+    data: {
+      viewer: {
+        rpcs: {
+          getUsageInfo: {
+            subscriptionTier: 'AI Pro',
+            pools: [
+              {
+                poolType: 'GXU_FIVE_HOURLY',
+                percentageUsed: 0.19,
+                gxu: { windowRefreshesAt: '2026-11-16T16:29:00Z' },
+              },
+              {
+                poolType: 'GXU_WEEKLY',
+                percentageUsed: 0.26,
+                gxu: { windowRefreshesAt: '2026-11-17T06:29:00Z' },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.planTier, 'AI Pro');
+  assert.equal(parsed.dailyUsed, 19);
+  assert.equal(parsed.dailyResetAt, '2026-11-16T16:29:00.000Z');
+  assert.equal(parsed.weeklyUsed, 26);
+  assert.equal(parsed.weeklyResetAt, '2026-11-17T06:29:00.000Z');
 });

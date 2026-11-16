@@ -108,6 +108,56 @@ export function parseGeminiRpcWindows(jSf9QcPayload, otPayload = null) {
 }
 
 /**
+ * Parse GEMINI_WEB_GRAPHQL UsagePageQuery response (`data.viewer.rpcs.getUsageInfo.pools`).
+ */
+export function parseGeminiGraphqlUsage(payload) {
+  const usageInfo = payload?.data?.viewer?.rpcs?.getUsageInfo;
+  const pools = usageInfo?.pools;
+  if (!Array.isArray(pools) || pools.length === 0) return null;
+
+  let dailyUsed = null;
+  let dailyResetAt = null;
+  let weeklyUsed = null;
+  let weeklyResetAt = null;
+
+  for (const pool of pools) {
+    if (!pool || typeof pool !== 'object') continue;
+    const type = String(pool.poolType || pool.type || pool.id || '').toUpperCase();
+    const rawPct = pool.percentageUsed;
+    const usedPct =
+      typeof rawPct === 'number' && Number.isFinite(rawPct)
+        ? Math.max(0, Math.min(100, Math.round((rawPct <= 1 ? rawPct * 100 : rawPct))))
+        : null;
+    if (usedPct === null) continue;
+
+    const refreshRaw = pool.gxu?.windowRefreshesAt || pool.windowRefreshesAt || null;
+    const refreshMs = refreshRaw ? Date.parse(refreshRaw) : NaN;
+    const resetIso = Number.isFinite(refreshMs) ? new Date(refreshMs).toISOString() : null;
+
+    if (type.includes('FIVE_HOURLY') || type.includes('5H')) {
+      dailyUsed = usedPct;
+      dailyResetAt = resetIso;
+    } else if (type.includes('WEEKLY')) {
+      weeklyUsed = usedPct;
+      weeklyResetAt = resetIso;
+    }
+  }
+
+  if (dailyUsed === null && weeklyUsed === null) return null;
+
+  const tierRaw = usageInfo?.subscriptionTier || usageInfo?.planTier || usageInfo?.tier || null;
+  return {
+    planTier: typeof tierRaw === 'string' && tierRaw.trim() ? tierRaw.trim() : 'AI Pro',
+    dailyUsed: dailyUsed ?? 0,
+    dailyResetAt,
+    remaining5h: null,
+    weeklyUsed: weeklyUsed ?? 0,
+    weeklyResetAt,
+    remaining7d: null,
+  };
+}
+
+/**
  * Calculates burn-rate pace and estimates whether quota will exhaust before reset.
  * @param {number} usedPct - Percentage used (0..100)
  * @param {number} resetAtMs - Target reset timestamp in epoch ms

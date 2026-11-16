@@ -183,6 +183,73 @@ async function fetchGeminiViaRpc() {
   };
 }
 
+const GEMINI_USAGE_GRAPHQL_ID = '2/dWbCvkVB0X16r9NPnxifeOAAqdCqMf0xeWvau9yPy7g=';
+const GEMINI_USAGE_GRAPHQL_VARS = JSON.stringify({
+  g1Request: { entrypoints: ['GEMINI_USAGE_SETTINGS_UPGRADE_BANNER'] },
+  workspaceRequest: { recommendationsForSurfaceRequests: [] },
+});
+
+/**
+ * Fallback zero-iframe GraphQL persisted query (`UsagePageQuery`) for Gemini Web usage.
+ */
+async function fetchGeminiViaGraphql() {
+  const url = `${GEMINI_BASE}/_/BardChatUi/graphql/schemas/GEMINI_WEB_GRAPHQL/executeQuery?id=${encodeURIComponent(GEMINI_USAGE_GRAPHQL_ID)}&variables=${encodeURIComponent(GEMINI_USAGE_GRAPHQL_VARS)}`;
+  const resp = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { 'X-Same-Domain': '1' },
+    cache: 'no-store',
+  });
+  if (resp.status === 401 || resp.status === 403 || (resp.redirected && resp.url.includes('accounts.google'))) {
+    throw new GeminiAuthError('Not logged into Gemini');
+  }
+  if (!resp.ok) throw new Error(`GraphQL HTTP ${resp.status}`);
+  const payload = await resp.json();
+  const pools = payload?.data?.viewer?.rpcs?.getUsageInfo?.pools;
+  if (!Array.isArray(pools) || pools.length === 0) {
+    throw new Error('Unrecognized GraphQL usage payload');
+  }
+
+  let dailyUsed = 0;
+  let dailyResetAt = null;
+  let weeklyUsed = 0;
+  let weeklyResetAt = null;
+
+  for (const pool of pools) {
+    if (!pool || typeof pool !== 'object') continue;
+    const type = String(pool.poolType || pool.type || pool.id || '').toUpperCase();
+    const rawPct = pool.percentageUsed;
+    if (typeof rawPct !== 'number' || !Number.isFinite(rawPct)) continue;
+    const usedPct = Math.max(0, Math.min(100, Math.round(rawPct <= 1 ? rawPct * 100 : rawPct)));
+    const refreshRaw = pool.gxu?.windowRefreshesAt || pool.windowRefreshesAt || null;
+    const refreshMs = refreshRaw ? Date.parse(refreshRaw) : NaN;
+    const resetIso = Number.isFinite(refreshMs) ? new Date(refreshMs).toISOString() : null;
+
+    if (type.includes('FIVE_HOURLY') || type.includes('5H')) {
+      dailyUsed = usedPct;
+      dailyResetAt = resetIso;
+    } else if (type.includes('WEEKLY')) {
+      weeklyUsed = usedPct;
+      weeklyResetAt = resetIso;
+    }
+  }
+
+  const tierRaw = payload?.data?.viewer?.rpcs?.getUsageInfo?.subscriptionTier;
+  return {
+    planTier: typeof tierRaw === 'string' && tierRaw.trim() ? tierRaw.trim() : 'AI Pro',
+    dailyUsed,
+    dailyReset: formatClockLabel(dailyResetAt),
+    dailyResetAt,
+    remaining5h: null,
+    weeklyUsed,
+    weeklyReset: formatDateClockLabel(weeklyResetAt),
+    weeklyResetAt,
+    remaining7d: null,
+    sourceMode: 'graphql',
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 function setupFrameRules() {
   chrome.declarativeNetRequest
     .updateDynamicRules({
@@ -235,7 +302,23 @@ async function performSilentSync() {
       isSyncing = false;
       return;
     }
-    // Fallback to hidden offscreen DOM scraper if RPC endpoint or payload format changes
+  }
+
+  // Step 2: Try GEMINI_WEB_GRAPHQL UsagePageQuery before falling back to offscreen DOM scraper
+  try {
+    const gqlData = await fetchGeminiViaGraphql();
+    await chrome.storage.local.set({ geminiUsage: gqlData, lastSyncError: '' });
+    updateBadge(gqlData);
+    await pushToWorker(gqlData);
+    isSyncing = false;
+    return;
+  } catch (err) {
+    if (err instanceof GeminiAuthError) {
+      await chrome.storage.local.set({ lastSyncError: err.message });
+      isSyncing = false;
+      return;
+    }
+    // Fallback to hidden offscreen DOM scraper if both RPC & GraphQL fail
   }
 
   try {

@@ -75,8 +75,9 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           ? 'gemini'
           : 'claude-gpt';
       const decision = wakeDecisions[poolKey];
+      const decisionI18nKey = decision?.reason ? `wake_${decision.reason.replace(/[^a-z0-9_]/gi, '_')}` : '';
       const decisionBadge = decision
-        ? `<span class="badge mono ${decision.shouldTrigger ? 'is-ok' : decision.reason?.startsWith('blocked:') ? 'is-danger' : ''}" title="${escapeHtml(decision.modelId || '')}">${escapeHtml(decision.reason || '')}</span>`
+        ? `<span class="badge mono ${decision.shouldTrigger ? 'is-ok' : decision.reason?.startsWith('blocked:') ? 'is-danger' : ''}" data-i18n="${escapeHtml(decisionI18nKey)}" title="${escapeHtml([decision.reason, decision.modelId].filter(Boolean).join(' · '))}">${escapeHtml(decision.reason || '')}</span>`
         : '';
 
       const windowsHtml = (g.windows || [])
@@ -177,10 +178,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       const min = Math.max(1, Math.round(f.depletionMs / 60000));
       const h = Math.floor(min / 60);
       const m = min % 60;
-      const dur = h > 0 ? `${h}j ${m}m` : `${m}m`;
-      return ` · <span style="color:var(--warn)">Boros (~${dur})</span>`;
+      const dur = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      return ` · <span style="color:var(--warn)"><span data-i18n="paceOver">Boros</span> (~${dur})</span>`;
     }
-    return ` · Laju aman (${f.elapsedPct}%)`;
+    return ` · <span data-i18n="paceSafe">Laju aman</span> (${f.elapsedPct}%)`;
   };
   const geminiCard = geminiWeb
     ? `<div class="provider-card">
@@ -223,8 +224,12 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     : '';
 
   const wakeRes = wakeState?.lastWakeResult;
+  const wakeTokenParts = [];
+  if (wakeRes?.promptTokens !== null && wakeRes?.promptTokens !== undefined) wakeTokenParts.push(`in:${wakeRes.promptTokens}`);
+  if (wakeRes?.thoughtsTokens !== null && wakeRes?.thoughtsTokens !== undefined) wakeTokenParts.push(`think:${wakeRes.thoughtsTokens}`);
+  if (wakeRes?.outputTokens !== null && wakeRes?.outputTokens !== undefined) wakeTokenParts.push(`out:${wakeRes.outputTokens}`);
   const wakeTokenMeta = wakeRes && wakeRes.totalTokens !== null && wakeRes.totalTokens !== undefined
-    ? ` · <span class="num">${wakeRes.totalTokens} tok${wakeRes.thoughtsTokens !== null && wakeRes.thoughtsTokens !== undefined ? ` (think:${wakeRes.thoughtsTokens})` : ''}</span>`
+    ? ` · <span class="num">${wakeRes.totalTokens} tok${wakeTokenParts.length ? ` (${wakeTokenParts.join(' · ')})` : ''}</span>`
     : '';
   const lastWake = wakeRes
     ? `<strong>${escapeHtml(wakeRes.model)}</strong> · <span class="rel-time" data-iso="${escapeHtml(wakeRes.triggeredAt)}">${escapeHtml(wakeRes.triggeredAt)}</span>${wakeTokenMeta}<br><span class="muted"><span data-i18n="replyLabel">Balasan</span>: "${escapeHtml(wakeRes.reply)}"</span>`
@@ -235,6 +240,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Cloudflare Worker dashboard for Antigravity, GitHub Copilot, and Google Gemini Web quota tracking and Auto-Wake automation." />
   <title>Quota Reset Automation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -599,6 +605,15 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         btnSyncTick: 'Jalankan sinkronisasi',
         btnForceWake: 'Kirim wake sekarang',
         readyNow: '00:00:00 (siap)',
+        paceSafe: 'Laju aman',
+        paceOver: 'Boros',
+        wake_manual_force: 'paksa manual',
+        wake_weekly_exhausted: 'limit mingguan habis',
+        wake_cooldown_active: 'jeda aktif',
+        wake_safety_margin: 'margin aman 2m',
+        wake_already_triggered_for_cycle: 'siklus sudah aktif',
+        wake_not_full: 'siklus berjalan',
+        wake_all_guards_passed: 'siap wake',
       },
       en: {
         lastSyncLabel: 'Last sync',
@@ -627,6 +642,15 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         btnSyncTick: 'Run sync tick',
         btnForceWake: 'Trigger wake now',
         readyNow: '00:00:00 (ready)',
+        paceSafe: 'On track',
+        paceOver: 'Over pace',
+        wake_manual_force: 'manual force',
+        wake_weekly_exhausted: 'weekly exhausted',
+        wake_cooldown_active: 'cooldown',
+        wake_safety_margin: 'safety margin',
+        wake_already_triggered_for_cycle: 'cycle active',
+        wake_not_full: 'in use',
+        wake_all_guards_passed: 'ready',
       },
     };
 
@@ -747,15 +771,30 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       });
     }
 
+    if (tokInput) {
+      tokInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') callApi('/api/automation/tick');
+      });
+    }
+
     async function callApi(path) {
       const out = document.getElementById('out');
+      const btns = document.querySelectorAll('.actions .btn');
+      btns.forEach((b) => { b.disabled = true; b.style.opacity = '0.6'; });
       out.style.display = 'block';
       out.textContent = 'Running...';
-      const tok = tokInput.value.trim();
-      if (tok) localStorage.setItem('qra_auth_token', tok);
-      const res = await fetch(path, { method: 'POST', headers: { 'X-Auth-Token': tok } });
-      out.textContent = JSON.stringify(await res.json(), null, 2);
-      if (res.ok) setTimeout(() => location.reload(), 1200);
+      try {
+        const tok = tokInput.value.trim();
+        if (tok) localStorage.setItem('qra_auth_token', tok);
+        const res = await fetch(path, { method: 'POST', headers: { 'X-Auth-Token': tok } });
+        const body = await res.json().catch(() => ({ status: res.status }));
+        out.textContent = JSON.stringify(body, null, 2);
+        if (res.ok) setTimeout(() => location.reload(), 1200);
+      } catch (err) {
+        out.textContent = JSON.stringify({ error: err?.message || 'Network error' }, null, 2);
+      } finally {
+        btns.forEach((b) => { b.disabled = false; b.style.opacity = ''; });
+      }
     }
   </script>
 </body>
