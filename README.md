@@ -3,7 +3,7 @@
 [![CI](https://github.com/gintingism/quota-reset-automation-notifier/actions/workflows/ci.yml/badge.svg)](https://github.com/gintingism/quota-reset-automation-notifier/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/gintingism/quota-reset-automation-notifier/blob/main/LICENSE)
 
-Cloudflare Worker that checks Antigravity and GitHub Copilot quotas every 5 minutes, sends alerts to Telegram or Discord, and sends a minimal `"1"` wake ping (`-low` / `flash-lite` models, `maxOutputTokens: 4`, `thinkingBudget: 0`) whenever a 5-hour Antigravity pool resets to 100% so the next 5-hour timer starts immediately.
+Cloudflare Worker that checks Antigravity and GitHub Copilot quotas every 5 minutes, sends alerts to Telegram or Discord, and sends a minimal `"1+1="` wake ping (`-low` / `flash-lite` models, `maxOutputTokens: 1`, `stopSequences: ["\n"]`, `thinkingBudget: 0`, no `systemInstruction`) whenever a 5-hour Antigravity pool resets to 100% so the next 5-hour timer starts immediately.
 
 An optional Chrome extension in `extension/` reads `gemini.google.com/usage` in the browser and pushes Gemini Web limits to the same Worker dashboard.
 
@@ -25,7 +25,7 @@ flowchart LR
 
 | Provider | Source | Tracked Windows | Auto-Wake | Alerts |
 | :--- | :--- | :--- | :--- | :--- |
-| **Antigravity** (`src/cloudcode.js`) | `daily-cloudcode-pa.googleapis.com` | Gemini (5h + Weekly), Claude & GPT (5h + Weekly), Gemini 4 Argon (Weekly) | Yes, per 5h pool (`"1"`, max 4 output tokens, `-low`/`flash-lite`) | Wake (with token breakdown), Reset, Low Quota, Circuit-Breaker, Auth Expired |
+| **Antigravity** (`src/cloudcode.js`) | `daily-cloudcode-pa.googleapis.com` | Gemini (5h + Weekly), Claude & GPT (5h + Weekly), Gemini 4 Argon (Weekly); supports nested `quotaInfo` buckets and synthesizes missing Gemini `5H` windows from `fetchAvailableModels` | Yes, per 5h pool (`"1+1="`, max 1 output token, prefers `-low`/`flash-lite` and falls back to live `Medium` models such as `gemini-3.8-flash*` / `gemini-4-hydrogen*`) | Wake (with token breakdown), Reset, Low Quota, Circuit-Breaker, Auth Expired |
 | **GitHub Copilot** (`src/copilot.js`) | `api.github.com/copilot_internal/user` | Monthly AI credits (`credits_used`, `credits_remaining`, `entitlement`) | No (monthly cycle only) | Low Quota, Monthly Reset |
 | **Gemini Web** (`extension/`) | `batchexecute` RPC (`jSf9Qc` / `otAQ7b`), `GEMINI_WEB_GRAPHQL` (`UsagePageQuery`), with DOM fallback | 5h/session (`dailyUsed`), Weekly (`weeklyUsed`), Plan Tier | No (browser session only) | Low Quota |
 
@@ -36,7 +36,7 @@ Each pool with a `5H` window (`Gemini Models` and `Claude and GPT models`) is ev
 1. `remaining_fraction >= 1.0` (100% full).
 2. `now >= lastTriggeredResetAt + 2 min` (prevents re-triggering while a 5-hour window is already active).
 3. `now - lastTriggerAt >= 10 min` (cooldown).
-4. `reset_time_iso !== lastTriggeredResetAt` (new reset cycle).
+4. `reset_time_iso !== lastTriggeredResetAt` (new reset cycle), or when `reset_time_iso` is `null` (idle 100% pool), Auto-Wake triggers immediately and enforces a 5-hour guard (`IDLE_CYCLE_COOLDOWN_MS`, anchored to `now + 5h`) so it cannot re-trigger within the same 5h cycle.
 5. Current local time is inside `WAKE_TIME_WINDOW` (if set) and the pool's weekly limit is above `0%`.
 
 ## Setup
@@ -89,11 +89,11 @@ npm run deploy
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `AUTO_WAKE_ENABLED` | `"true"` | Enable or disable automatic wake pings |
-| `WAKE_GEMINI_MODEL` | `"gemini-3-flash"` | Model used to wake the Gemini 5h pool (auto-prefers `flash-lite`/`-low` variants) |
+| `WAKE_GEMINI_MODEL` | `"gemini-3.8-flash-low"` | Model used to wake the Gemini 5h pool (auto-prefers `flash-lite`/`-low` variants, falls back to live Gemini 3.8/4 models) |
 | `WAKE_CLAUDE_MODEL` | `"claude-sonnet-5-5-low"` | Model used to wake the Claude & GPT 5h pool (auto-prefers `-low` variants) |
 | `WAKE_ARGON_MODEL` | `"gemini-4-argon-low"` | Model used to wake the Gemini 4 Argon pool if a 5h window is active |
-| `WAKE_PROMPT` | `"1"` | Minimal prompt text sent on wake |
-| `WAKE_MAX_OUTPUT_TOKENS` | `"4"` | Output token cap for wake requests (`thinkingBudget: 0` enabled by default) |
+| `WAKE_PROMPT` | `"1+1="` | Minimal prompt text sent on wake |
+| `WAKE_MAX_OUTPUT_TOKENS` | `"1"` | Output token cap for wake requests (`stopSequences: ["\n"]`, `thinkingBudget: 0`, no `systemInstruction`) |
 | `WAKE_TIME_WINDOW` | `""` | Optional local window like `"07:00-23:00"`, empty for 24/7 |
 | `TIMEZONE_OFFSET_HOURS` | `"7"` | UTC offset in hours (`7` for WIB) |
 | `LOW_QUOTA_THRESHOLD` | `"20"` | Percentage threshold for low-quota alerts |

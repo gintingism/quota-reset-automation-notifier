@@ -86,10 +86,17 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
   const push = (id) => {
     if (id && !ranked.includes(id)) ranked.push(id);
   };
+  const appendFallbackVariants = (poolModels) => {
+    poolModels.forEach((m) => push(normalizeLowModelId(m.id)));
+    poolModels.forEach((m) => push(m.id));
+  };
 
   if (lower.includes('argon')) {
     safeModels.filter((m) => m.id.includes('argon') && isLowTierModel(m)).forEach((m) => push(m.id));
     safeModels.filter((m) => m.id.includes('argon')).forEach((m) => push(m.id));
+    if (ranked.length === 0) {
+      appendFallbackVariants(models.filter((m) => m.id.includes('argon')));
+    }
     push(normalizedPreferred || 'gemini-4-argon-low');
     return ranked;
   }
@@ -104,7 +111,18 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
     }
     gem.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
     gem.forEach((m) => push(m.id));
-    push(normalizedPreferred || 'gemini-3-flash');
+
+    if (gem.length === 0) {
+      const allGem = models.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
+      appendFallbackVariants([
+        ...allGem.filter((m) => m.id.includes('flash')),
+        ...allGem.filter((m) => !m.id.includes('flash')),
+      ]);
+      push(normalizedPreferred);
+      push('gemini-3.8-flash-low');
+      push('gemini-3.8-flash');
+      push('gemini-3-flash');
+    }
     return ranked;
   }
 
@@ -117,7 +135,10 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
     }
     cg.filter((m) => m.id.includes('claude-sonnet')).forEach((m) => push(m.id));
     cg.forEach((m) => push(m.id));
-    push(normalizedPreferred || 'claude-sonnet-5-5-low');
+    if (cg.length === 0) {
+      appendFallbackVariants(models.filter((m) => m.id.includes('claude') || m.id.includes('gpt')));
+      push(normalizedPreferred || 'claude-sonnet-5-5-low');
+    }
     return ranked;
   }
 
@@ -202,7 +223,7 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
           poolKey === 'argon'
             ? env.WAKE_ARGON_MODEL || 'gemini-4-argon-low'
             : poolKey === 'gemini'
-              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3-flash'
+              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3.8-flash-low'
               : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-low';
         const candidates = getPoolCandidateModels(agSnapshot, group.name, preferredModel);
         const modelId = candidates[0];
@@ -230,18 +251,21 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         if (decision.shouldTrigger) {
           let wakeResult = null;
           let lastWakeErr = null;
+          let limitBlocked = false;
 
-          for (const candidateModel of candidates.slice(0, 3)) {
+          for (const candidateModel of candidates.slice(0, 5)) {
             try {
               wakeResult = await triggerAutoWake(accessToken, projectInfo.projectId, {
                 model: candidateModel,
-                prompt: env.WAKE_PROMPT || '1',
-                maxOutputTokens: env.WAKE_MAX_OUTPUT_TOKENS || 4,
+                allowExactModel: !isLowTierModel({ id: candidateModel, name: '' }),
+                prompt: env.WAKE_PROMPT || '1+1=',
+                maxOutputTokens: env.WAKE_MAX_OUTPUT_TOKENS || 1,
               });
               break;
             } catch (err) {
               lastWakeErr = err;
               if (err instanceof CloudCodeLimitError) {
+                limitBlocked = true;
                 const blockMs = err.code === 'rate_limited' ? RATE_LIMIT_BLOCK_MS : VALIDATION_BLOCK_MS;
                 wakeState.pools[poolKey] = {
                   ...poolState,
@@ -264,22 +288,30 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
                 break;
               }
               if (!/failed \((?:400|404)\)/.test(err?.message || '')) {
-                throw err;
+                break;
               }
             }
           }
 
           if (!wakeResult) {
-            if (lastWakeErr && !(lastWakeErr instanceof CloudCodeLimitError)) {
-              throw lastWakeErr;
+            if (!limitBlocked && lastWakeErr) {
+              summary.wakeDecisions[poolKey] = {
+                modelId: candidates[0],
+                shouldTrigger: false,
+                reason: 'wake_failed',
+                error: lastWakeErr.message,
+              };
             }
             continue;
           }
 
           wakeResult.pool = group.name;
+          // Anchor idle 5h wakes to now + 5h so safety_margin guards the cycle even if resetTime appears later.
+          const recordedResetAt =
+            fiveHourWin.reset_time_iso || new Date(nowMs + 5 * 3600 * 1000).toISOString();
           wakeState.pools[poolKey] = {
             lastTriggerAt: nowMs,
-            lastTriggeredResetAt: fiveHourWin.reset_time_iso || null,
+            lastTriggeredResetAt: recordedResetAt,
             lastWakeResult: wakeResult,
           };
           wakeState.lastWakeResult = wakeResult;
@@ -305,17 +337,17 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         } else if (
           isTrue(env.NOTIFY_ON_RESET, true) &&
           fiveHourWin.remaining_fraction >= 1.0 &&
-          fiveHourWin.reset_time_iso &&
           decision.reason !== 'safety_margin' &&
           decision.reason !== 'already_triggered_for_cycle' &&
           decision.reason !== 'cooldown_active' &&
           !decision.reason.startsWith('blocked:')
         ) {
+          const cycleToken = fiveHourWin.reset_time_iso || weeklyWin?.reset_time_iso || `${decision.reason}:idle`;
           const sent = await sendDedupedAlert(
             env,
             dedupState,
             `reset:ag:${poolKey}`,
-            fiveHourWin.reset_time_iso,
+            cycleToken,
             `✅ <b>${group.name} 5h Reset (100%)</b>\nAuto-Wake skipped: <code>${decision.reason}</code>`,
           );
           if (sent) summary.alerts.push(`reset:${poolKey}`);

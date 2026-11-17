@@ -6,11 +6,14 @@ import {
   isWithinTimeWindow,
   RESET_SAFETY_MARGIN_MS,
   RESET_TRIGGER_COOLDOWN_MS,
+  IDLE_CYCLE_COOLDOWN_MS,
 } from '../src/wake_engine.js';
 import {
   parseAntigravityModels,
   parseSseResponse,
   normalizeLowModelId,
+  buildWakeBody,
+  triggerAutoWake,
 } from '../src/cloudcode.js';
 import { pickPoolModel, getPoolCandidateModels } from '../src/index.js';
 import { renderDashboardHtml } from '../src/dashboard.js';
@@ -340,4 +343,134 @@ test('parseGeminiGraphqlUsage extracts GXU_FIVE_HOURLY and GXU_WEEKLY pools', ()
   assert.equal(parsed.dailyResetAt, '2026-11-16T16:29:00.000Z');
   assert.equal(parsed.weeklyUsed, 26);
   assert.equal(parsed.weeklyResetAt, '2026-11-17T06:29:00.000Z');
+});
+
+test('shouldTriggerOnReset wakes 100% idle pool without resetTime and blocks for 5h cycle', () => {
+  const now = Date.parse('2026-11-17T04:00:00Z');
+  assert.deepEqual(
+    shouldTriggerOnReset({ remaining_fraction: 1.0, reset_time_iso: null }, {}, now),
+    { shouldTrigger: true, reason: 'all_guards_passed' },
+  );
+
+  assert.equal(
+    shouldTriggerOnReset(
+      { remaining_fraction: 1.0, reset_time_iso: null },
+      { lastTriggeredResetAt: null, lastTriggerAt: now - 30 * 60 * 1000 },
+      now,
+    ).reason,
+    'already_triggered_for_cycle',
+  );
+
+  assert.deepEqual(
+    shouldTriggerOnReset(
+      { remaining_fraction: 1.0, reset_time_iso: null },
+      { lastTriggeredResetAt: null, lastTriggerAt: now - IDLE_CYCLE_COOLDOWN_MS },
+      now,
+    ),
+    { shouldTrigger: true, reason: 'all_guards_passed' },
+  );
+});
+
+test('getPoolCandidateModels handles Medium-only Gemini 3.8/4 catalogs without dropping live models', () => {
+  const snapshot = {
+    models: [
+      { id: 'gemini-4-argon-medium', name: 'Gemini 4 Argon Medium' },
+      { id: 'gemini-4-hydrogen-medium', name: 'Gemini 4 Hydrogen Medium' },
+      { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash Medium' },
+    ],
+  };
+
+  assert.deepEqual(
+    getPoolCandidateModels(snapshot, 'Gemini Models', 'gemini-3.8-flash-low'),
+    [
+      'gemini-3.8-flash-low',
+      'gemini-4-hydrogen-low',
+      'gemini-3.8-flash-medium',
+      'gemini-4-hydrogen-medium',
+      'gemini-3.8-flash',
+      'gemini-3-flash',
+    ],
+  );
+});
+
+test('parseAntigravityModels supports nested quotaInfo buckets and synthesizes missing Gemini 5H window', () => {
+  const future5h = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+  const futureWeekly = new Date(Date.now() + 96 * 3600 * 1000).toISOString();
+  const raw = {
+    models: {
+      'gemini-3.8-flash-medium': {
+        displayName: 'Gemini 3.8 Flash Medium',
+        quotaInfo: { remainingFraction: 1.0 },
+      },
+      'gemini-4-argon-medium': {
+        displayName: 'Gemini 4 Argon Medium',
+        quotaInfo: { remainingFraction: 0.81, resetTime: futureWeekly },
+      },
+    },
+  };
+  const summary = {
+    quota_summary: {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          buckets: [{ quotaBucketType: 'LONG_TERM', quotaInfo: { remainingFraction: 0.88, resetTime: futureWeekly } }],
+        },
+        {
+          displayName: 'Claude and GPT models',
+          buckets: [
+            { quotaBucketType: 'LONG_TERM', quotaInfo: { resetTime: futureWeekly } },
+            { quotaBucketType: 'SHORT_TERM', quotaInfo: { remainingFraction: 1.0, resetTime: future5h } },
+          ],
+        },
+      ],
+    },
+  };
+
+  const parsed = parseAntigravityModels(raw, summary);
+  const geminiGroup = parsed.groups.find((g) => g.name === 'Gemini Models');
+  const claudeGroup = parsed.groups.find((g) => g.name === 'Claude and GPT models');
+
+  assert.equal(geminiGroup.windows.length, 2);
+  assert.equal(geminiGroup.windows[0].window_type, 'WEEKLY');
+  assert.equal(geminiGroup.windows[1].window_type, '5H');
+  assert.equal(geminiGroup.windows[1].remaining_percent, 100);
+  assert.equal(geminiGroup.windows[1].reset_time_iso, null);
+  assert.equal(claudeGroup.windows[0].remaining_percent, 0);
+  assert.equal(claudeGroup.windows[1].window_type, '5H');
+});
+
+test('buildWakeBody and triggerAutoWake minimize input and output tokens with 1+1= and maxOutputTokens=1', async () => {
+  const defaultBody = buildWakeBody('proj_1', 'gemini-3.8-flash-low', '1+1=', 1, true);
+  assert.equal(defaultBody.request.systemInstruction, undefined);
+  assert.equal(defaultBody.request.contents[0].parts[0].text, '1+1=');
+  assert.equal(defaultBody.request.generationConfig.maxOutputTokens, 1);
+  assert.deepEqual(defaultBody.request.generationConfig.stopSequences, ['\n']);
+  assert.deepEqual(defaultBody.request.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+
+  const originalFetch = globalThis.fetch;
+  const sentBodies = [];
+  globalThis.fetch = async (_url, init) => {
+    const parsed = JSON.parse(init.body);
+    sentBodies.push(parsed);
+    if (sentBodies.length === 1) {
+      return new Response('missing systemInstruction', { status: 400 });
+    }
+    return new Response(
+      'data: {"response":{"candidates":[{"content":{"parts":[{"text":"2"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"thoughtsTokenCount":0,"totalTokenCount":6}}}\n',
+      { status: 200 },
+    );
+  };
+
+  try {
+    const res = await triggerAutoWake('tok_1', 'proj_1', { model: 'gemini-3.8-flash-low' });
+    assert.equal(sentBodies.length, 2);
+    assert.equal(sentBodies[0].request.systemInstruction, undefined);
+    assert.equal(sentBodies[0].request.contents[0].parts[0].text, '1+1=');
+    assert.equal(sentBodies[0].request.generationConfig.maxOutputTokens, 1);
+    assert.deepEqual(sentBodies[1].request.systemInstruction, { parts: [{ text: '.' }] });
+    assert.equal(res.reply, '2');
+    assert.equal(res.outputTokens, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

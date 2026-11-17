@@ -12,8 +12,6 @@ const USER_AGENT = 'antigravity/hub/2.24.0 linux/x64';
 const KV_PROJECT_KEY = 'cloudcode:project_info';
 const PROJECT_CACHE_TTL_SEC = 24 * 60 * 60;
 
-const MINIMAL_WAKE_SYSTEM_PROMPT = 'Reply ok.';
-
 export class CloudCodeLimitError extends Error {
   constructor(message, status, code) {
     super(message);
@@ -105,24 +103,77 @@ export async function resolveProjectInfo(accessToken, kv) {
 
 const ARGON_WEEKLY_BUCKET_ID = 'gemini-argon-wtu-weekly';
 
+function isArgonEntry(m) {
+  return /(?:gemini[-\s]+(?:4[-\s]+)?argon|model_placeholder_m41[789])/i.test(`${m.id || ''} ${m.name || ''}`);
+}
+
+function resolveBucketMetricRecord(bucket) {
+  const candidates = [
+    bucket,
+    bucket.quotaInfo,
+    bucket.quota_info,
+    bucket.quota,
+    bucket.limit,
+    bucket.window,
+    bucket.bucket,
+  ];
+  for (const c of candidates) {
+    if (!c || typeof c !== 'object') continue;
+    const hasFraction =
+      c.remainingFraction !== undefined ||
+      c.remaining_fraction !== undefined ||
+      c.fraction !== undefined ||
+      c.remaining !== undefined;
+    const hasReset =
+      c.resetTime !== undefined ||
+      c.reset_time !== undefined ||
+      c.resetTimestamp !== undefined ||
+      c.reset_timestamp !== undefined;
+    if (hasFraction || hasReset) return c;
+  }
+  return bucket;
+}
+
 function parseWindowFromBucket(bucket) {
   if (!bucket || typeof bucket !== 'object') return null;
+  const id = String(bucket.bucketId || bucket.quotaBucketId || bucket.id || bucket.key || '');
+  const normId = id.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const metric = resolveBucketMetricRecord(bucket);
+
+  const resetIso =
+    metric.resetTime ||
+    metric.reset_time ||
+    metric.resetTimestamp ||
+    metric.reset_timestamp ||
+    bucket.resetTime ||
+    bucket.reset_time ||
+    null;
+
   const rawFraction =
-    bucket.remainingFraction ?? bucket.remaining_fraction ?? bucket.fraction;
-  const fraction =
+    metric.remainingFraction ?? metric.remaining_fraction ?? metric.fraction ?? metric.remaining;
+  let fraction =
     typeof rawFraction === 'number' && Number.isFinite(rawFraction)
       ? Math.max(0, Math.min(1, rawFraction))
       : null;
+
+  // Proto3 JSON omits zero-valued remainingFraction when resetTime is set; Argon buckets require explicit fraction.
+  if (fraction === null && resetIso && !normId.includes('argon')) {
+    fraction = 0;
+  }
   if (fraction === null) return null;
 
-  const id = String(bucket.bucketId || bucket.quotaBucketId || bucket.id || bucket.key || '');
-  const resetIso = bucket.resetTime || bucket.reset_time || null;
   const resetAt = resetIso ? Math.floor(Date.parse(resetIso) / 1000) : null;
   const rawType = String(
-    bucket.quotaBucketType || bucket.windowType || bucket.type || bucket.label || id,
+    bucket.quotaBucketType ??
+      metric.quotaBucketType ??
+      bucket.windowType ??
+      bucket.type ??
+      bucket.label ??
+      id,
   ).toUpperCase();
 
   const isWeekly =
+    rawType === '1' ||
     rawType.includes('WEEK') ||
     rawType.includes('LONG') ||
     (resetAt !== null && resetAt - Math.floor(Date.now() / 1000) > 12 * 3600);
@@ -192,24 +243,36 @@ export function parseQuotaGroups(modelsData, summaryData, parsedModels) {
     groups.push({ name: 'Gemini 4 Argon', windows: [argonWeekly] });
   }
 
-  // Fallback for any missing pool (e.g. Gemini Models if API only returned 3p summary)
-  const hasGeminiGroup = groups.some((g) => g.name.toLowerCase().includes('gemini'));
-  if (!hasGeminiGroup && parsedModels.length > 0) {
-    const gemini = parsedModels.filter((m) => m.id.includes('gemini') && m.remaining_percent !== null);
+  // Fallback for missing Gemini group or Gemini group returning only WEEKLY without 5H
+  const geminiGroup = groups.find(
+    (g) => g.name.toLowerCase().includes('gemini') && !g.name.toLowerCase().includes('argon'),
+  );
+  const needsGemini5h = !geminiGroup || !geminiGroup.windows.some((w) => w.window_type === '5H');
+  if (needsGemini5h && parsedModels.length > 0) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const gemini = parsedModels.filter(
+      (m) =>
+        m.id.includes('gemini') &&
+        !isArgonEntry(m) &&
+        m.remaining_percent !== null &&
+        (m.reset_at === null || m.reset_at - nowSec <= 12 * 3600),
+    );
     if (gemini.length > 0) {
       const minG = gemini.reduce((a, b) => (a.remaining_percent <= b.remaining_percent ? a : b));
-      groups.unshift({
-        name: 'Gemini Models',
-        windows: [{
-          id: 'gemini-5h',
-          label: '5h limit',
-          window_type: '5H',
-          remaining_fraction: minG.remaining_fraction,
-          remaining_percent: minG.remaining_percent,
-          reset_at: minG.reset_at,
-          reset_time_iso: minG.reset_time_iso,
-        }],
-      });
+      const win5h = {
+        id: 'gemini-5h',
+        label: '5h limit',
+        window_type: '5H',
+        remaining_fraction: minG.remaining_fraction,
+        remaining_percent: minG.remaining_percent,
+        reset_at: minG.reset_at,
+        reset_time_iso: minG.reset_time_iso,
+      };
+      if (!geminiGroup) {
+        groups.unshift({ name: 'Gemini Models', windows: [win5h] });
+      } else {
+        geminiGroup.windows.push(win5h);
+      }
     }
   }
 
@@ -339,25 +402,36 @@ export function normalizeLowModelId(modelId) {
   return modelId.trim().replace(/-(?:medium|high)$/i, '-low');
 }
 
-function buildWakeBody(projectId, model, prompt, maxOutputTokens, includeThinkingZero) {
+export function buildWakeBody(
+  projectId,
+  model,
+  prompt,
+  maxOutputTokens,
+  includeThinkingZero,
+  systemPrompt = '',
+) {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
+  const request = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    session_id: `sess_${ts}_${rand}`,
+    generationConfig: {
+      ...(maxOutputTokens > 0 ? { maxOutputTokens } : {}),
+      temperature: 0,
+      stopSequences: ['\n'],
+      ...(includeThinkingZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+    },
+  };
+  if (systemPrompt) {
+    request.systemInstruction = { parts: [{ text: systemPrompt }] };
+  }
   return {
     project: projectId || `projects/random-${rand}/locations/global`,
     requestId: `req_${ts}_${rand}`,
     model,
     userAgent: 'antigravity',
     requestType: 'agent',
-    request: {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      session_id: `sess_${ts}_${rand}`,
-      systemInstruction: { parts: [{ text: MINIMAL_WAKE_SYSTEM_PROMPT }] },
-      generationConfig: {
-        ...(maxOutputTokens > 0 ? { maxOutputTokens } : {}),
-        temperature: 0,
-        ...(includeThinkingZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-      },
-    },
+    request,
   };
 }
 
@@ -387,19 +461,23 @@ function classifyLimitError(status, errText) {
 }
 
 /**
- * Send a minimal prompt ("1") via streamGenerateContent?alt=sse to start the quota rolling timer.
+ * Send a minimal prompt ("1+1=") via streamGenerateContent?alt=sse to start the quota rolling timer.
  */
 export async function triggerAutoWake(accessToken, projectId, options = {}) {
-  const model = normalizeLowModelId(options.model) || 'gemini-3-flash';
-  const prompt = options.prompt || '1';
-  const maxOutputTokens = Number(options.maxOutputTokens) || 4;
+  const model = options.allowExactModel
+    ? (options.model || '').trim() || 'gemini-3.8-flash-low'
+    : normalizeLowModelId(options.model) || 'gemini-3.8-flash-low';
+  const prompt = options.prompt || '1+1=';
+  const maxOutputTokens = Math.max(1, Number(options.maxOutputTokens) || 1);
   const disableThinking = options.disableThinking !== false;
+  let systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
 
   const tryModes = disableThinking ? [true, false] : [false];
   let lastError;
 
-  for (const useThinkingZero of tryModes) {
-    const body = buildWakeBody(projectId, model, prompt, maxOutputTokens, useThinkingZero);
+  for (let i = 0; i < tryModes.length; i++) {
+    const useThinkingZero = tryModes[i];
+    const body = buildWakeBody(projectId, model, prompt, maxOutputTokens, useThinkingZero, systemPrompt);
 
     for (const baseUrl of CLOUDCODE_BASE_URLS) {
       const url = `${baseUrl}/v1internal:streamGenerateContent?alt=sse`;
@@ -432,6 +510,14 @@ export async function triggerAutoWake(accessToken, projectId, options = {}) {
       if (res.status >= 500) {
         lastError = new Error(`Auto-Wake stream failed (${res.status}) at ${baseUrl}`);
         continue;
+      }
+
+      if (res.status === 400 && !systemPrompt && /system/i.test(errText)) {
+        // Fallback if Cloud Code enforces a non-empty systemInstruction on agent requests.
+        systemPrompt = '.';
+        i--;
+        lastError = new Error(`Auto-Wake required systemInstruction (${res.status})`);
+        break;
       }
 
       if (

@@ -5,6 +5,7 @@
 
 export const RESET_SAFETY_MARGIN_MS = 2 * 60 * 1000; // 2 minutes after previous resetAt
 export const RESET_TRIGGER_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes between triggers
+export const IDLE_CYCLE_COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5h guard when API omits resetTime on 100% idle buckets
 
 /**
  * Check if current local time (shifted by offsetHours) falls inside "HH:MM-HH:MM".
@@ -46,25 +47,27 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
     return { shouldTrigger: false, reason: 'not_full' };
   }
 
-  const resetIso = modelSnapshot.reset_time_iso;
-  if (!resetIso) {
-    return { shouldTrigger: false, reason: 'missing_reset_time' };
-  }
-
-  const lastResetIso = wakeState?.lastTriggeredResetAt;
+  const resetIso = modelSnapshot.reset_time_iso || null;
+  const lastResetIso = wakeState?.lastTriggeredResetAt ?? null;
   if (lastResetIso) {
     const lastResetMs = Date.parse(lastResetIso);
     if (Number.isFinite(lastResetMs) && nowMs < lastResetMs + RESET_SAFETY_MARGIN_MS) {
       return { shouldTrigger: false, reason: 'safety_margin' };
     }
-    if (resetIso === lastResetIso) {
+    if (resetIso && resetIso === lastResetIso) {
       return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
     }
   }
 
   const lastTriggerAt = wakeState?.lastTriggerAt;
-  if (typeof lastTriggerAt === 'number' && nowMs - lastTriggerAt < RESET_TRIGGER_COOLDOWN_MS) {
-    return { shouldTrigger: false, reason: 'cooldown_active' };
+  if (typeof lastTriggerAt === 'number') {
+    if (nowMs - lastTriggerAt < RESET_TRIGGER_COOLDOWN_MS) {
+      return { shouldTrigger: false, reason: 'cooldown_active' };
+    }
+    // Cloud Code omits resetTime on idle 100% 5h buckets; prevent re-waking within the same 5h cycle.
+    if (!resetIso && wakeState?.lastTriggeredResetAt === null && nowMs - lastTriggerAt < IDLE_CYCLE_COOLDOWN_MS) {
+      return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
+    }
   }
 
   return { shouldTrigger: true, reason: 'all_guards_passed' };

@@ -634,6 +634,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         wake_already_triggered_for_cycle: 'siklus sudah aktif',
         wake_not_full: 'siklus berjalan',
         wake_all_guards_passed: 'siap wake',
+        wake_missing_reset_time: 'menunggu reset time',
+        wake_wake_failed: 'wake gagal',
+        wake_disabled: 'nonaktif',
+        wake_outside_time_window: 'di luar jadwal',
       },
       en: {
         lastSyncLabel: 'Last sync',
@@ -671,6 +675,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         wake_already_triggered_for_cycle: 'cycle active',
         wake_not_full: 'in use',
         wake_all_guards_passed: 'ready',
+        wake_missing_reset_time: 'missing reset time',
+        wake_wake_failed: 'wake failed',
+        wake_disabled: 'disabled',
+        wake_outside_time_window: 'outside window',
       },
     };
 
