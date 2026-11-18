@@ -20,8 +20,8 @@
     </div>
     <div class="header-actions">
       <div class="lang-switch" role="group" aria-label="Pilih bahasa / Select language">
-        <button type="button" class="lang-btn is-active" data-lang="id">ID</button>
-        <button type="button" class="lang-btn" data-lang="en">EN</button>
+        <button type="button" class="lang-btn is-active" data-lang="id" aria-pressed="true">ID</button>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
       </div>
       <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka gemini.google.com/usage">
         <i data-lucide="external-link"></i>
@@ -44,7 +44,7 @@
     <div class="status-bar">
       <div class="status-pill">
         <span id="syncDot" class="dot"></span>
-        <span id="syncStatus" class="status-text num">Worker: —</span>
+        <span id="syncStatus" class="status-text num" aria-live="polite">Worker: —</span>
       </div>
       <a id="openWorkerBtn" class="link-btn" href="#" target="_blank" rel="noreferrer" hidden>
         <span data-i18n="openDashboard">Dashboard</span>

@@ -186,7 +186,9 @@ function applyStaticTranslations() {
     }
   });
   document.querySelectorAll('.lang-btn').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.lang === state.lang);
+    const active = btn.dataset.lang === state.lang;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
   });
 }
 
@@ -449,6 +451,7 @@ function render() {
         const weeklyBar = document.getElementById('weeklyBar');
         weeklyBar.style.width = `${weeklyRemaining}%`;
         weeklyBar.style.backgroundColor = weeklyTone.color;
+        weeklyBar.parentElement?.setAttribute('aria-valuenow', String(weeklyRemaining));
 
         document.getElementById('weeklyReset').textContent = `${geminiUsage.weeklyReset || '—'}`;
         const exactWeeklyMs = geminiUsage.weeklyResetAt ? Date.parse(geminiUsage.weeklyResetAt) : NaN;
@@ -497,6 +500,15 @@ document.getElementById('toggleTokenBtn').addEventListener('click', () => {
   input.type = show ? 'text' : 'password';
   btn.innerHTML = `<i data-lucide="${show ? 'eye-off' : 'eye'}"></i>`;
   if (window.lucide) window.lucide.createIcons({ root: btn });
+});
+
+['workerUrl', 'authToken'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('saveBtn').click();
+    });
+  }
 });
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
