@@ -204,15 +204,15 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         }
       }
 
-      // Evaluate Auto-Wake independently for every pool that has a 5h window
+      // Evaluate Auto-Wake independently for every pool (5h window, or weekly-only pool like Gemini 4 Argon)
       const wakeEnabled = isTrue(env.AUTO_WAKE_ENABLED, true);
       const inWindow = isWithinTimeWindow(env.WAKE_TIME_WINDOW, offsetHours, nowMs);
 
       for (const group of agSnapshot.groups || []) {
         const fiveHourWin = (group.windows || []).find((w) => w.window_type === '5H');
-        if (!fiveHourWin) continue;
-
         const weeklyWin = (group.windows || []).find((w) => w.window_type === 'WEEKLY');
+        const targetWin = fiveHourWin || weeklyWin;
+        if (!targetWin) continue;
         const lowerGroup = group.name.toLowerCase();
         const poolKey = lowerGroup.includes('argon')
           ? 'argon'
@@ -243,7 +243,7 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         } else if (weeklyWin && weeklyWin.remaining_fraction <= 0) {
           decision = { shouldTrigger: false, reason: 'weekly_exhausted' };
         } else {
-          decision = shouldTriggerOnReset(fiveHourWin, poolState, nowMs);
+          decision = shouldTriggerOnReset(targetWin, poolState, nowMs);
         }
 
         summary.wakeDecisions[poolKey] = { modelId, ...decision };
@@ -306,9 +306,9 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
           }
 
           wakeResult.pool = group.name;
-          // Anchor idle 5h wakes to now + 5h so safety_margin guards the cycle even if resetTime appears later.
+          const cycleMs = targetWin.window_type === 'WEEKLY' ? 7 * 24 * 3600 * 1000 : 5 * 3600 * 1000;
           const recordedResetAt =
-            fiveHourWin.reset_time_iso || new Date(nowMs + 5 * 3600 * 1000).toISOString();
+            targetWin.reset_time_iso || new Date(nowMs + cycleMs).toISOString();
           wakeState.pools[poolKey] = {
             lastTriggerAt: nowMs,
             lastTriggeredResetAt: recordedResetAt,
@@ -336,19 +336,19 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
           }
         } else if (
           isTrue(env.NOTIFY_ON_RESET, true) &&
-          fiveHourWin.remaining_fraction >= 1.0 &&
+          targetWin.remaining_fraction >= 1.0 &&
           decision.reason !== 'safety_margin' &&
           decision.reason !== 'already_triggered_for_cycle' &&
           decision.reason !== 'cooldown_active' &&
           !decision.reason.startsWith('blocked:')
         ) {
-          const cycleToken = fiveHourWin.reset_time_iso || weeklyWin?.reset_time_iso || `${decision.reason}:idle`;
+          const cycleToken = targetWin.reset_time_iso || weeklyWin?.reset_time_iso || `${decision.reason}:idle`;
           const sent = await sendDedupedAlert(
             env,
             dedupState,
             `reset:ag:${poolKey}`,
             cycleToken,
-            `✅ <b>${group.name} 5h Reset (100%)</b>\nAuto-Wake skipped: <code>${decision.reason}</code>`,
+            `✅ <b>${group.name} ${targetWin.label} (100%)</b>\nAuto-Wake skipped: <code>${decision.reason}</code>`,
           );
           if (sent) summary.alerts.push(`reset:${poolKey}`);
         }

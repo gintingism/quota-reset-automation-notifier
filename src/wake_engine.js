@@ -48,6 +48,12 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
   }
 
   const resetIso = modelSnapshot.reset_time_iso || null;
+  if (modelSnapshot.window_type === 'WEEKLY' && resetIso) {
+    const resetMs = Date.parse(resetIso);
+    if (Number.isFinite(resetMs) && resetMs > nowMs + RESET_SAFETY_MARGIN_MS) {
+      return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
+    }
+  }
   const lastResetIso = wakeState?.lastTriggeredResetAt ?? null;
   if (lastResetIso) {
     const lastResetMs = Date.parse(lastResetIso);
@@ -64,8 +70,10 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
     if (nowMs - lastTriggerAt < RESET_TRIGGER_COOLDOWN_MS) {
       return { shouldTrigger: false, reason: 'cooldown_active' };
     }
-    // Cloud Code omits resetTime on idle 100% 5h buckets; prevent re-waking within the same 5h cycle.
-    if (!resetIso && wakeState?.lastTriggeredResetAt === null && nowMs - lastTriggerAt < IDLE_CYCLE_COOLDOWN_MS) {
+    // Cloud Code omits resetTime on idle 100% buckets; prevent re-waking within the same cycle.
+    const idleCooldownMs =
+      modelSnapshot.window_type === 'WEEKLY' ? 7 * 24 * 3600 * 1000 : IDLE_CYCLE_COOLDOWN_MS;
+    if (!resetIso && wakeState?.lastTriggeredResetAt === null && nowMs - lastTriggerAt < idleCooldownMs) {
       return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
     }
   }

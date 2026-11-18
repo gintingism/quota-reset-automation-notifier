@@ -474,3 +474,28 @@ test('buildWakeBody and triggerAutoWake minimize input and output tokens with 1+
     globalThis.fetch = originalFetch;
   }
 });
+
+test('shouldTriggerOnReset wakes idle WEEKLY-only pool (Gemini 4 Argon) and skips active weekly timer', () => {
+  const now = Date.parse('2026-11-17T10:00:00Z');
+  const activeWeeklyReset = new Date(now + 6 * 24 * 3600 * 1000).toISOString();
+
+  // Idle 100% weekly pool (no resetTime yet) -> wakes
+  assert.deepEqual(
+    shouldTriggerOnReset(
+      { window_type: 'WEEKLY', remaining_fraction: 1.0, reset_time_iso: null },
+      {},
+      now,
+    ),
+    { shouldTrigger: true, reason: 'all_guards_passed' },
+  );
+
+  // Active weekly pool (resetTime already 6d in future) -> skipped
+  assert.equal(
+    shouldTriggerOnReset(
+      { window_type: 'WEEKLY', remaining_fraction: 1.0, reset_time_iso: activeWeeklyReset },
+      {},
+      now,
+    ).reason,
+    'already_triggered_for_cycle',
+  );
+});
