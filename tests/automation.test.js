@@ -250,11 +250,11 @@ test('normalizeLowModelId and pickPoolModel always select lightest low/flash mod
 
   assert.equal(
     pickPoolModel(snapshot, 'Gemini Models', 'gemini-3.1-pro-high'),
-    'gemini-3.5-flash-lite',
+    'gemini-3-flash',
   );
   assert.deepEqual(
     getPoolCandidateModels(snapshot, 'Gemini Models', 'gemini-3.1-pro-high'),
-    ['gemini-3.5-flash-lite', 'gemini-3-flash', 'gemini-3.1-pro-low'],
+    ['gemini-3-flash', 'gemini-3.1-pro-low', 'gemini-3.5-flash-lite'],
   );
   assert.equal(
     pickPoolModel(snapshot, 'Claude and GPT models', 'claude-sonnet-5-5-medium'),

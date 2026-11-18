@@ -104,12 +104,12 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
 
   if (lower.includes('gemini')) {
     const gem = safeModels.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
-    gem.filter((m) => m.id.includes('flash-lite')).forEach((m) => push(m.id));
-    gem.filter((m) => m.id.includes('flash') && isLowTierModel(m)).forEach((m) => push(m.id));
-    gem.filter((m) => m.id.includes('flash')).forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash') && !m.id.includes('flash-lite') && isLowTierModel(m)).forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash') && !m.id.includes('flash-lite')).forEach((m) => push(m.id));
     if (normalizedPreferred && gem.some((m) => m.id === normalizedPreferred)) {
       push(normalizedPreferred);
     }
+    gem.filter((m) => m.id.includes('flash-lite')).forEach((m) => push(m.id));
     gem.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
     gem.forEach((m) => push(m.id));
 
