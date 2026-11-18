@@ -301,6 +301,28 @@ export function parseQuotaGroups(modelsData, summaryData, parsedModels) {
     }
   }
 
+  const hasArgonGroup = groups.some((g) => g.name.toLowerCase().includes('argon'));
+  if (!hasArgonGroup && parsedModels.length > 0) {
+    const argon = parsedModels.filter(
+      (m) => (m.id.toLowerCase().includes('argon') || m.name.toLowerCase().includes('argon')) && m.remaining_percent !== null,
+    );
+    if (argon.length > 0) {
+      const minA = argon.reduce((a, b) => (a.remaining_percent <= b.remaining_percent ? a : b));
+      groups.push({
+        name: 'Gemini 4 Argon',
+        windows: [{
+          id: ARGON_WEEKLY_BUCKET_ID,
+          label: 'Weekly limit',
+          window_type: 'WEEKLY',
+          remaining_fraction: minA.remaining_fraction,
+          remaining_percent: minA.remaining_percent,
+          reset_at: minA.reset_at,
+          reset_time_iso: minA.reset_time_iso,
+        }],
+      });
+    }
+  }
+
   return groups;
 }
 

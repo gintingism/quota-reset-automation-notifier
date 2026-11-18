@@ -92,10 +92,11 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
   };
 
   if (lower.includes('argon')) {
-    safeModels.filter((m) => m.id.includes('argon') && isLowTierModel(m)).forEach((m) => push(m.id));
-    safeModels.filter((m) => m.id.includes('argon')).forEach((m) => push(m.id));
+    const isArgon = (m) => m.id.toLowerCase().includes('argon') || (m.name || '').toLowerCase().includes('argon');
+    safeModels.filter((m) => isArgon(m) && isLowTierModel(m)).forEach((m) => push(m.id));
+    safeModels.filter(isArgon).forEach((m) => push(m.id));
     if (ranked.length === 0) {
-      appendFallbackVariants(models.filter((m) => m.id.includes('argon')));
+      appendFallbackVariants(models.filter(isArgon));
     }
     push(normalizedPreferred || 'gemini-4-argon-low');
     return ranked;

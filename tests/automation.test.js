@@ -499,3 +499,21 @@ test('shouldTriggerOnReset wakes idle WEEKLY-only pool (Gemini 4 Argon) and skip
     'already_triggered_for_cycle',
   );
 });
+
+test('parseAntigravityModels synthesizes Gemini 4 Argon weekly group when omitted from quota_summary', () => {
+  const parsed = parseAntigravityModels(
+    {
+      models: {
+        'gemini-4-argon-medium': {
+          displayName: 'Gemini 4 Argon (Medium)',
+          quotaInfo: { remainingFraction: 1.0 },
+        },
+      },
+    },
+    null,
+  );
+  const argonGroup = parsed.groups.find((g) => g.name === 'Gemini 4 Argon');
+  assert.ok(argonGroup);
+  assert.equal(argonGroup.windows[0].window_type, 'WEEKLY');
+  assert.equal(argonGroup.windows[0].remaining_percent, 100);
+});
