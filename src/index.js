@@ -216,14 +216,14 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         }
       }
 
-      // Evaluate Auto-Wake independently for every pool (5h window, or weekly-only pool like Gemini 4 Argon)
+      // Evaluate Auto-Wake independently for every pool (5h, weekly, monthly, or any window type)
       const wakeEnabled = isTrue(env.AUTO_WAKE_ENABLED, true);
       const inWindow = isWithinTimeWindow(env.WAKE_TIME_WINDOW, offsetHours, nowMs);
 
       for (const group of agSnapshot.groups || []) {
         const fiveHourWin = (group.windows || []).find((w) => w.window_type === '5H');
         const weeklyWin = (group.windows || []).find((w) => w.window_type === 'WEEKLY');
-        const targetWin = fiveHourWin || weeklyWin;
+        const targetWin = fiveHourWin || weeklyWin || (group.windows || [])[0];
         if (!targetWin) continue;
         const lowerGroup = group.name.toLowerCase();
         const poolKey = lowerGroup.includes('argon')
