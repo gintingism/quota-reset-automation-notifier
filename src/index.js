@@ -76,6 +76,12 @@ function isMediumOrHighTierModel(m) {
   );
 }
 
+function isFlashLiteModel(m) {
+  const id = (m.id || '').toLowerCase();
+  const name = (m.name || '').toLowerCase();
+  return id.includes('flash-lite') || name.includes('flash lite') || id.startsWith('gemini-2.5-');
+}
+
 export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
   const models = agSnapshot?.models || [];
   const normalizedPreferred = normalizeLowModelId(preferredId);
@@ -104,20 +110,25 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
 
   if (lower.includes('gemini')) {
     const gem = safeModels.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
-    gem.filter((m) => m.id.includes('flash') && !m.id.includes('flash-lite') && isLowTierModel(m)).forEach((m) => push(m.id));
-    gem.filter((m) => m.id.includes('flash') && !m.id.includes('flash-lite')).forEach((m) => push(m.id));
-    if (normalizedPreferred && gem.some((m) => m.id === normalizedPreferred)) {
-      push(normalizedPreferred);
+    const preferredMatch = normalizedPreferred ? gem.find((m) => m.id === normalizedPreferred) : null;
+    if (preferredMatch && preferredMatch.id.includes('flash') && !isFlashLiteModel(preferredMatch)) {
+      push(preferredMatch.id);
     }
-    gem.filter((m) => m.id.includes('flash-lite')).forEach((m) => push(m.id));
-    gem.filter((m) => isLowTierModel(m)).forEach((m) => push(m.id));
-    gem.forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash') && !isFlashLiteModel(m) && isLowTierModel(m)).forEach((m) => push(m.id));
+    gem.filter((m) => m.id.includes('flash') && !isFlashLiteModel(m)).forEach((m) => push(m.id));
+    if (preferredMatch && !isFlashLiteModel(preferredMatch)) {
+      push(preferredMatch.id);
+    }
+    gem.filter((m) => !isFlashLiteModel(m) && isLowTierModel(m)).forEach((m) => push(m.id));
+    gem.filter((m) => !isFlashLiteModel(m)).forEach((m) => push(m.id));
+    gem.filter((m) => isFlashLiteModel(m)).forEach((m) => push(m.id));
 
     if (gem.length === 0) {
       const allGem = models.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
       appendFallbackVariants([
-        ...allGem.filter((m) => m.id.includes('flash')),
-        ...allGem.filter((m) => !m.id.includes('flash')),
+        ...allGem.filter((m) => m.id.includes('flash') && !isFlashLiteModel(m)),
+        ...allGem.filter((m) => !isFlashLiteModel(m)),
+        ...allGem.filter((m) => isFlashLiteModel(m)),
       ]);
       push(normalizedPreferred);
       push('gemini-3.8-flash-low');

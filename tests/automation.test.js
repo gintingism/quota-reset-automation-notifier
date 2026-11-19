@@ -517,3 +517,19 @@ test('parseAntigravityModels synthesizes Gemini 4 Argon weekly group when omitte
   assert.equal(argonGroup.windows[0].window_type, 'WEEKLY');
   assert.equal(argonGroup.windows[0].remaining_percent, 100);
 });
+
+test('getPoolCandidateModels skips gemini-2.5-flash (Gemini 3.5 Flash Lite alias) in favor of gemini-3.8-flash-low', () => {
+  const snapshot = {
+    models: [
+      { id: 'gemini-2.5-flash', name: 'Gemini 3.5 Flash Lite' },
+      { id: 'gemini-2.5-flash-thinking', name: 'Gemini 3.5 Flash Lite' },
+      { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low)' },
+      { id: 'gemini-4-hydrogen-low', name: 'Gemini 4 Hydrogen (Low)' },
+    ],
+  };
+  const ranked = getPoolCandidateModels(snapshot, 'Gemini Models', 'gemini-3.8-flash-low');
+  assert.equal(ranked[0], 'gemini-3.8-flash-low');
+  assert.equal(ranked[1], 'gemini-4-hydrogen-low');
+  assert.ok(ranked.indexOf('gemini-2.5-flash') > ranked.indexOf('gemini-4-hydrogen-low'));
+});
+
