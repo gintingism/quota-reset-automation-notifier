@@ -6,6 +6,9 @@
 export const RESET_SAFETY_MARGIN_MS = 2 * 60 * 1000; // 2 minutes after previous resetAt
 export const RESET_TRIGGER_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes between triggers
 export const IDLE_CYCLE_COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5h guard when API omits resetTime on 100% idle buckets
+export const IDLE_5H_MIN_MS = 4.5 * 60 * 60 * 1000; // Rolling ~5h idle window lower bound (antigravity-usage)
+export const IDLE_5H_MAX_MS = 5.5 * 60 * 60 * 1000; // Rolling ~5h idle window upper bound
+export const IDLE_WEEKLY_MIN_MS = 6.95 * 24 * 60 * 60 * 1000; // Rolling ~7d idle window lower bound
 
 /**
  * Check if current local time (shifted by offsetHours) falls inside "HH:MM-HH:MM".
@@ -35,7 +38,7 @@ export function isWithinTimeWindow(windowStr, offsetHours = 7, nowMs = Date.now(
 /**
  * Evaluate the 4 guards for whether a model should be woken up on reset:
  * 1. Quota is full (remainingFraction >= 1.0)
- * 2. Safety margin: now >= lastTriggeredResetAt + 2 min
+ * 2. Safety margin: now >= lastTriggeredResetAt + 2 min (bypassed if 5h resetTime is sliding forward in 4.5h-5.5h idle window)
  * 3. Cooldown: now - lastTriggerAt >= 10 min
  * 4. New cycle: resetTimeIso !== lastTriggeredResetAt
  */
@@ -48,15 +51,36 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
   }
 
   const resetIso = modelSnapshot.reset_time_iso || null;
-  if (modelSnapshot.window_type === 'WEEKLY' && resetIso) {
-    const resetMs = Date.parse(resetIso);
-    if (Number.isFinite(resetMs) && resetMs > nowMs + RESET_SAFETY_MARGIN_MS) {
+  const resetMs = resetIso ? Date.parse(resetIso) : NaN;
+  const timeUntilResetMs = Number.isFinite(resetMs) ? resetMs - nowMs : null;
+
+  if (modelSnapshot.window_type === 'WEEKLY' && Number.isFinite(resetMs)) {
+    // Active weekly timer (< ~6.95d remaining) does not need wake; rolling ~7d idle at 100% can still wake.
+    if (resetMs > nowMs + RESET_SAFETY_MARGIN_MS && timeUntilResetMs < IDLE_WEEKLY_MIN_MS) {
       return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
     }
   }
+
+  const lastTriggerAt = wakeState?.lastTriggerAt;
+  const inCooldown = typeof lastTriggerAt === 'number' && nowMs - lastTriggerAt < RESET_TRIGGER_COOLDOWN_MS;
   const lastResetIso = wakeState?.lastTriggeredResetAt ?? null;
-  if (lastResetIso) {
-    const lastResetMs = Date.parse(lastResetIso);
+  const lastResetMs = lastResetIso ? Date.parse(lastResetIso) : NaN;
+
+  const isRollingIdle5h =
+    modelSnapshot.window_type === '5H' &&
+    timeUntilResetMs !== null &&
+    timeUntilResetMs >= IDLE_5H_MIN_MS &&
+    timeUntilResetMs <= IDLE_5H_MAX_MS;
+
+  // If a 5h bucket is still 100% and its resetTime slid forward by >= cooldown (still rolling now+5h),
+  // the previous wake did not start the timer; allow a retry once cooldown expires.
+  const isSlidingUnstarted5h =
+    isRollingIdle5h &&
+    Number.isFinite(lastResetMs) &&
+    Number.isFinite(resetMs) &&
+    resetMs >= lastResetMs + RESET_TRIGGER_COOLDOWN_MS;
+
+  if (lastResetIso && !isSlidingUnstarted5h) {
     if (Number.isFinite(lastResetMs) && nowMs < lastResetMs + RESET_SAFETY_MARGIN_MS) {
       return { shouldTrigger: false, reason: 'safety_margin' };
     }
@@ -65,9 +89,8 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
     }
   }
 
-  const lastTriggerAt = wakeState?.lastTriggerAt;
   if (typeof lastTriggerAt === 'number') {
-    if (nowMs - lastTriggerAt < RESET_TRIGGER_COOLDOWN_MS) {
+    if (inCooldown) {
       return { shouldTrigger: false, reason: 'cooldown_active' };
     }
     // Cloud Code omits resetTime on idle 100% buckets; prevent re-waking within the same cycle.
@@ -76,6 +99,10 @@ export function shouldTriggerOnReset(modelSnapshot, wakeState, nowMs = Date.now(
     if (!resetIso && wakeState?.lastTriggeredResetAt === null && nowMs - lastTriggerAt < idleCooldownMs) {
       return { shouldTrigger: false, reason: 'already_triggered_for_cycle' };
     }
+  }
+
+  if (isSlidingUnstarted5h) {
+    return { shouldTrigger: true, reason: 'idle_5h_rolling' };
   }
 
   return { shouldTrigger: true, reason: 'all_guards_passed' };

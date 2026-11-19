@@ -535,3 +535,52 @@ test('getPoolCandidateModels skips gemini-2.5-flash (Gemini 3.5 Flash Lite alias
   assert.ok(ranked.indexOf('gemini-2.5-flash') > ranked.indexOf('gemini-4-hydrogen-low'));
 });
 
+test('shouldTriggerOnReset retries unstarted rolling 5h window (4.5h-5.5h) and wakes 100% rolling weekly but skips <100% weekly', () => {
+  const now = Date.parse('2026-11-19T03:30:00Z');
+  const prevTriggerAt = now - 15 * 60 * 1000;
+  const prevRollingReset = new Date(prevTriggerAt + 5 * 3600 * 1000).toISOString();
+  const currentRollingReset = new Date(now + 5 * 3600 * 1000).toISOString();
+
+  // 5h pool still 100% and resetTime slid forward by 15m -> bypasses safety_margin and wakes
+  assert.deepEqual(
+    shouldTriggerOnReset(
+      { window_type: '5H', remaining_fraction: 1.0, reset_time_iso: currentRollingReset },
+      { lastTriggeredResetAt: prevRollingReset, lastTriggerAt: prevTriggerAt },
+      now,
+    ),
+    { shouldTrigger: true, reason: 'idle_5h_rolling' },
+  );
+
+  // Within 10m cooldown -> still blocked by cooldown_active
+  assert.equal(
+    shouldTriggerOnReset(
+      { window_type: '5H', remaining_fraction: 1.0, reset_time_iso: currentRollingReset },
+      { lastTriggeredResetAt: prevRollingReset, lastTriggerAt: now - 5 * 60 * 1000 },
+      now,
+    ).reason,
+    'cooldown_active',
+  );
+
+  // Weekly pool at 100% with rolling 7d reset -> wakes
+  const rollingWeeklyReset = new Date(now + 7 * 24 * 3600 * 1000).toISOString();
+  assert.deepEqual(
+    shouldTriggerOnReset(
+      { window_type: 'WEEKLY', remaining_fraction: 1.0, reset_time_iso: rollingWeeklyReset },
+      {},
+      now,
+    ),
+    { shouldTrigger: true, reason: 'all_guards_passed' },
+  );
+
+  // Weekly pool below 100% -> skipped (not_full)
+  assert.equal(
+    shouldTriggerOnReset(
+      { window_type: 'WEEKLY', remaining_fraction: 0.9, reset_time_iso: rollingWeeklyReset },
+      {},
+      now,
+    ).reason,
+    'not_full',
+  );
+});
+
+
