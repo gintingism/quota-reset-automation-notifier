@@ -434,13 +434,14 @@ export function buildWakeBody(
 ) {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
+  const isClaude = String(model || '').toLowerCase().includes('claude');
   const request = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     session_id: `sess_${ts}_${rand}`,
     generationConfig: {
       ...(maxOutputTokens > 0 ? { maxOutputTokens } : {}),
       temperature: 0,
-      stopSequences: ['\n'],
+      ...(!isClaude ? { stopSequences: ['\n'] } : {}),
       ...(includeThinkingZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   };

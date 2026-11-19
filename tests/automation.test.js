@@ -446,6 +446,8 @@ test('buildWakeBody and triggerAutoWake minimize input and output tokens with 1+
   assert.equal(defaultBody.request.generationConfig.maxOutputTokens, 1);
   assert.deepEqual(defaultBody.request.generationConfig.stopSequences, ['\n']);
   assert.deepEqual(defaultBody.request.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+  const claudeBody = buildWakeBody('proj_1', 'claude-sonnet-5-5-low', '1+1=', 1, true);
+  assert.equal(claudeBody.request.generationConfig.stopSequences, undefined);
 
   const originalFetch = globalThis.fetch;
   const sentBodies = [];
