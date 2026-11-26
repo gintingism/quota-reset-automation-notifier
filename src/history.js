@@ -113,7 +113,7 @@ export function computeSeriesBurnRate(points, key) {
 export function renderSparklineSvg(points, key, color = '#5e6ad2', label = 'Quota trend', width = 220, height = 44) {
   const valid = (Array.isArray(points) ? points : []).filter((p) => typeof p?.[key] === 'number');
   if (valid.length < 2) {
-    return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="${label}"><line x1="2" y1="${height / 2}" x2="${width - 2}" y2="${height / 2}" stroke="#23252a" stroke-dasharray="3 3" stroke-width="1.5"/></svg>`;
+    return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="${label}"><line x1="2" y1="${height / 2}" x2="${width - 2}" y2="${height / 2}" stroke="var(--border, #23252a)" stroke-dasharray="3 3" stroke-width="1.5"/></svg>`;
   }
 
   const padX = 3;

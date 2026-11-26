@@ -318,14 +318,24 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script>
+    (function () {
+      var saved = localStorage.getItem('qra_theme');
+      var theme = saved === 'light' || saved === 'dark'
+        ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <style>
-    :root {
+    :root, [data-theme="dark"] {
       color-scheme: dark;
       /* Linear dark craft tokens (unified with Chrome extension) */
       --bg: #08090a;
       --surface: #0f1011;
       --surface-inset: #16171a;
       --surface-hover: #1e2024;
+      --topbar-bg: rgba(8, 9, 10, 0.88);
       --text: #f7f8f8;
       --muted: #9ba1a6;
       --subtle: #6e747c;
@@ -341,6 +351,25 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
       --rounded-btn: 8px;
       --rounded-badge: 6px;
       --ease: cubic-bezier(0.2, 0, 0, 1);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f6f7f8;
+      --surface: #ffffff;
+      --surface-inset: #eef0f3;
+      --surface-hover: #e5e8ed;
+      --topbar-bg: rgba(246, 247, 248, 0.9);
+      --text: #111318;
+      --muted: #525866;
+      --subtle: #6b7280;
+      --border: #e2e5ea;
+      --border-strong: #cbd0d8;
+      --accent: #4e5bc4;
+      --accent-hover: #424eb2;
+      --accent-soft: #4e5bc4;
+      --ok: #047857;
+      --warn: #b45309;
+      --danger: #b91c1c;
     }
     *, *::before, *::after { box-sizing: border-box; }
     :focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
@@ -370,7 +399,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
       flex-wrap: wrap;
       padding: 14px 0 13px;
       margin-bottom: 18px;
-      background: rgba(8, 9, 10, 0.88);
+      background: var(--topbar-bg);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
@@ -419,6 +448,17 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
     }
     .lang-btn:hover { color: var(--text); }
     .lang-btn.is-active { background: var(--surface-inset); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
+    .theme-btn {
+      width: 32px; height: 32px;
+      border-radius: var(--rounded-btn);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      display: grid; place-items: center;
+      cursor: pointer;
+      transition: background-color 140ms var(--ease), border-color 140ms var(--ease), color 140ms var(--ease);
+    }
+    .theme-btn:hover { background: var(--surface-inset); border-color: var(--border-strong); color: var(--text); }
 
     /* Unified Telemetry Strip */
     .kpi-strip {
@@ -708,17 +748,20 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
           <button type="button" class="lang-btn is-active" data-lang="id" aria-pressed="true">ID</button>
           <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
         </div>
+        <button id="themeToggle" type="button" class="theme-btn" title="Ganti tema terang/gelap" aria-label="Ganti tema terang/gelap" aria-pressed="false">
+          <i data-lucide="sun" aria-hidden="true"></i>
+        </button>
       </div>
     </header>
 
     <section class="kpi-strip">
       <div class="kpi-cell">
-        <div class="kpi-label"><span class="kpi-logo" style="color:#60a5fa">${SVG_AG}</span><span>Antigravity 5h Reset</span></div>
+        <div class="kpi-label"><span class="kpi-logo" style="color:var(--accent-soft)">${SVG_AG}</span><span>Antigravity 5h Reset</span></div>
         <div class="kpi-val num countdown" data-reset-ms="${agResetMs || ''}">${agResetMs ? escapeHtml(formatReset(ag.rolling_reset_at, offsetHours).split(' (')[0]) : '—'}</div>
         <div class="muted num">${agResetMs ? escapeHtml(formatLocalTime(agResetMs, offsetHours)) : '<span data-i18n="waitingNextCycle">Menunggu siklus berikutnya</span>'}</div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label"><span class="kpi-logo" style="color:#f0f6fc">${SVG_GH}</span><span>GitHub Copilot</span></div>
+        <div class="kpi-label"><span class="kpi-logo" style="color:var(--text)">${SVG_GH}</span><span>GitHub Copilot</span></div>
         <div class="kpi-val num">${copilot?.quota_percent ?? '—'}%</div>
         <div class="muted num">${
           copilot?.error
@@ -992,6 +1035,26 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendar
     document.querySelectorAll('.lang-btn').forEach((btn) => {
       btn.addEventListener('click', () => applyLanguage(btn.dataset.lang));
     });
+
+    const themeBtn = document.getElementById('themeToggle');
+    function applyTheme(next) {
+      const theme = next === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem('qra_theme', theme);
+      if (themeBtn) {
+        const isLight = theme === 'light';
+        themeBtn.setAttribute('aria-pressed', String(isLight));
+        themeBtn.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+        themeBtn.innerHTML = '<i data-lucide="' + (isLight ? 'moon' : 'sun') + '" aria-hidden="true"></i>';
+        if (window.lucide) window.lucide.createIcons({ root: themeBtn });
+      }
+    }
+    applyTheme(document.documentElement.dataset.theme || 'dark');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => {
+        applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+      });
+    }
 
     function formatCountdown(targetMs) {
       const diff = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));

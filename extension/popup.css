@@ -1,4 +1,4 @@
-:root {
+:root, [data-theme="dark"] {
   color-scheme: dark;
   /* Linear-inspired dark craft tokens (from awesome-design-md/linear.app) */
   --canvas: #08090a;
@@ -22,6 +22,26 @@
   --rounded-btn: 8px;
   --rounded-badge: 6px;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #f6f7f8;
+  --surface-1: #ffffff;
+  --surface-2: #eef0f3;
+  --surface-3: #e5e8ed;
+  --ink: #111318;
+  --ink-muted: #525866;
+  --ink-subtle: #6b7280;
+  --hairline: #e2e5ea;
+  --hairline-strong: #cbd0d8;
+
+  --accent: #4e5bc4;
+  --accent-hover: #424eb2;
+  --accent-soft: #4e5bc4;
+  --ok: #047857;
+  --warn: #b45309;
+  --danger: #b91c1c;
 }
 
 *, *::before, *::after {
@@ -283,8 +303,8 @@ body {
 
 .hint-banner.is-warn {
   border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.08);
-  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warn);
 }
 
 .hint-copy {

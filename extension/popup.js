@@ -127,6 +127,7 @@ const I18N = {
 
 const state = {
   lang: 'id',
+  theme: 'dark',
   dailyUsed: 0,
   weeklyUsed: 0,
   dailyResetMs: null,
@@ -523,11 +524,27 @@ function refreshAlarmSchedule() {
 let autoSyncTriggered = false;
 const STALE_SYNC_MS = 3 * 60 * 1000;
 
+function applyTheme(nextTheme) {
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = nextTheme === 'light' || nextTheme === 'dark' ? nextTheme : prefersLight ? 'light' : 'dark';
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) {
+    const isLight = theme === 'light';
+    btn.setAttribute('aria-pressed', String(isLight));
+    btn.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+    btn.innerHTML = `<i data-lucide="${isLight ? 'moon' : 'sun'}" aria-hidden="true"></i>`;
+    if (window.lucide) window.lucide.createIcons({ root: btn });
+  }
+}
+
 function render() {
   chrome.storage.local.get(
-    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync', 'lastSyncError', 'uiLang'],
-    ({ geminiUsage, workerUrl, authToken, lastWorkerSync, lastSyncError, uiLang }) => {
+    ['geminiUsage', 'workerUrl', 'authToken', 'lastWorkerSync', 'lastSyncError', 'uiLang', 'uiTheme'],
+    ({ geminiUsage, workerUrl, authToken, lastWorkerSync, lastSyncError, uiLang, uiTheme }) => {
       state.lang = uiLang === 'en' ? 'en' : 'id';
+      applyTheme(uiTheme);
       applyStaticTranslations();
       const dict = t();
 
@@ -738,6 +755,11 @@ document.querySelectorAll('.lang-btn').forEach((btn) => {
     const nextLang = btn.dataset.lang === 'en' ? 'en' : 'id';
     chrome.storage.local.set({ uiLang: nextLang }, render);
   });
+});
+
+document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+  const nextTheme = state.theme === 'light' ? 'dark' : 'light';
+  chrome.storage.local.set({ uiTheme: nextTheme }, () => applyTheme(nextTheme));
 });
 
 const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
