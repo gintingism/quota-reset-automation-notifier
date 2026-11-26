@@ -3,7 +3,7 @@
 [![CI](https://github.com/gintingism/quota-reset-automation-notifier/actions/workflows/ci.yml/badge.svg)](https://github.com/gintingism/quota-reset-automation-notifier/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/gintingism/quota-reset-automation-notifier/blob/main/LICENSE)
 
-Cloudflare Worker that checks Antigravity and GitHub Copilot quotas every 5 minutes, sends alerts to Telegram or Discord, and sends a minimal `"1+1="` wake ping (`-low` / `flash-lite` models, `maxOutputTokens: 1`, `stopSequences: ["\n"]`, `thinkingBudget: 0`, no `systemInstruction`) whenever a 5-hour Antigravity pool resets to 100% so the next 5-hour timer starts immediately.
+Cloudflare Worker that checks Antigravity (single or multi-account) and GitHub Copilot quotas every 5 minutes, records rolling 24-hour usage history and burn-rate sparklines, sends alerts to Telegram or Discord, syncs weekly resets to Google Calendar and Google Tasks, and sends a minimal `"1+1="` wake ping (`-low` / `flash-lite` models, `maxOutputTokens: 1`, `stopSequences: ["\n"]`, `thinkingBudget: 0`, no `systemInstruction`) whenever a 5-hour Antigravity pool resets to 100% so the next 5-hour timer starts immediately.
 
 An optional Chrome extension in `extension/` reads `gemini.google.com/usage` in the browser and pushes Gemini Web limits to the same Worker dashboard.
 
@@ -16,8 +16,9 @@ flowchart LR
   OAuth --> CloudCode["Cloud Code API (src/cloudcode.js)"]
   Worker --> Copilot["Copilot API (src/copilot.js)"]
   Ext["Chrome Extension (extension/)"] -->|POST /api/quota/sync| Worker
-  Worker <--> KV[("QUOTA_KV")]
+  Worker <--> KV[("QUOTA_KV + History")]
   Worker --> Alerts["Telegram / Discord (src/notifier.js)"]
+  Worker --> Cal["Google Calendar & Tasks (src/calendar.js)"]
   Worker --> UI["Web Dashboard (GET /)"]
 ```
 
@@ -80,8 +81,14 @@ npx wrangler secret put TELEGRAM_CHAT_ID
 # Optional:
 npx wrangler secret put DISCORD_WEBHOOK_URL
 npx wrangler secret put GITHUB_TOKEN
+# Optional multi-account Antigravity (JSON array):
+npx wrangler secret put ANTIGRAVITY_ACCOUNTS
+# Optional Google Calendar & Tasks weekly reset sync (run `npm run auth:calendar` first):
+npx wrangler secret put GCAL_CLIENT_ID
+npx wrangler secret put GCAL_CLIENT_SECRET
+npx wrangler secret put GCAL_REFRESH_TOKEN
 
-npm run deploy
+npx wrangler deploy
 ```
 
 ## Configuration (`wrangler.toml`)
@@ -106,9 +113,12 @@ npm run deploy
 | `GET /` | Public (read-only) | Categorized HTML dashboard (`Antigravity`, `GitHub Copilot`, `Google Gemini Web`) with brand logos, live reset countdowns, model filter, `ID \| EN` language switch, and manual controls |
 | `GET /health` | Public | Health check (`{"ok":true,"service":"quota-reset-automation"}`) |
 | `GET /api/quota/latest` | `X-Auth-Token` | Latest normalized JSON snapshot from `QUOTA_KV` |
+| `GET /api/quota/history` | `X-Auth-Token` | Rolling 24h quota usage history points (`history:quota`) |
 | `POST /api/quota/sync` | `X-Auth-Token` | Merge external v1 provider snapshots (used by `extension/`) |
 | `POST /api/automation/tick` | `X-Auth-Token` | Run one sync and Auto-Wake check immediately |
 | `POST /api/automation/wake` | `X-Auth-Token` | Force an immediate wake ping |
+| `GET/PUT /api/settings/calendar` | `X-Auth-Token` | Read or update Google Calendar & Tasks weekly reset sync settings |
+| `POST /api/calendar/sync` | `X-Auth-Token` | Force an immediate sync of weekly/monthly resets to Google Calendar & Tasks |
 
 ## Chrome extension (`extension/`)
 
@@ -120,13 +130,14 @@ npm run deploy
 
 What the popup shows:
 
-- **Gemini Web**: 5h session ring with remaining %, exact reset countdown, burn-rate / pace forecast (`Laju aman` vs `Boros · habis ~Xj Ym lagi`), and the weekly limit bar with its own countdown and pace. Uses lightweight `batchexecute` RPC (`jSf9Qc` + `otAQ7b`) first (<2 MB RAM, no iframe), falls back to `GEMINI_WEB_GRAPHQL` (`UsagePageQuery`), and only uses the `offscreen` DOM scraper if both fail.
-- **Antigravity**: dedicated card with the Antigravity mark, plan tier badge, one row per pool (`Gemini Models`, `Claude and GPT`), remaining %, mini bar, and live 5h reset countdown. Loaded from `GET /api/quota/latest`.
-- **GitHub Copilot**: dedicated card with the GitHub mark, plan tier, AI credits left, remaining % bar, and monthly reset countdown. Loaded from `GET /api/quota/latest`.
+- **Gemini Web**: 5h session ring with remaining %, exact reset countdown, burn-rate forecast (`Laju aman` vs `Boros · habis ~Xj Ym lagi`), and the weekly limit bar with its own countdown and pace. Uses `batchexecute` RPC (`jSf9Qc` + `otAQ7b`) first (<2 MB RAM, no iframe), falls back to `GEMINI_WEB_GRAPHQL` (`UsagePageQuery`), and only uses the `offscreen` DOM scraper if both fail.
+- **Antigravity**: card with the Antigravity mark, plan tier badge, quick **Wake** button (`POST /api/automation/wake`), per-account sections when multi-account is enabled, 5h and weekly rows per pool (`Gemini Models`, `Claude and GPT`), and last wake summary. Loaded from `GET /api/quota/latest`.
+- **GitHub Copilot**: card with the GitHub mark, plan tier, AI credits left, remaining % bar, and monthly reset countdown. Loaded from `GET /api/quota/latest`.
+- **Settings**: Worker URL and `X-Auth-Token` with inline validation, connection test button, and a **Google Calendar & Tasks** card synced to `/api/settings/calendar` and `/api/calendar/sync`.
 - **Footer**: time since the last read and time until the next auto-sync.
-- **Language**: an `ID | EN` switch in the header. The choice is stored in `chrome.storage.local` (`uiLang`). The Worker dashboard has the same switch, stored in `localStorage` (`qra_lang`).
+- **Language**: an `ID | EN` switch in the header stored in `chrome.storage.local` (`uiLang`). The Worker dashboard uses the same switch stored in `localStorage` (`qra_lang`).
 
-The Antigravity and Copilot cards only appear after the Worker URL and token are saved. The popup bundles `lucide` icons locally in `extension/vendor/` because Manifest V3 blocks remote scripts.
+The Antigravity, Copilot, and Calendar cards appear once the Worker URL and token are saved. The popup bundles `lucide` icons locally in `extension/vendor/` because Manifest V3 blocks remote scripts.
 
 ## Documentation, Wiki & Releases
 

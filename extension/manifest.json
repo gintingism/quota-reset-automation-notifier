@@ -1,8 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Gemini Web Quota Sync",
-  "version": "1.3.0",
-  "description": "Scrapes gemini.google.com/usage (EN & ID) and syncs to Quota Reset Automation Notifier Worker.",
+  "version": "1.4.0",
+  "description": "Tracks Gemini Web, Antigravity, and GitHub Copilot quotas and syncs to Quota Reset Automation Notifier Worker.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "storage",
     "alarms",

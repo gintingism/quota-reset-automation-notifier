@@ -23,12 +23,65 @@ export class AuthRevokedError extends Error {
 }
 
 /**
+ * Resolve all configured Antigravity accounts (primary env + optional ANTIGRAVITY_ACCOUNTS JSON array).
+ * Each entry: { id, label, refreshToken, clientId, clientSecret }.
+ */
+export function resolveAntigravityAccounts(env) {
+  const accounts = [];
+  const seen = new Set();
+
+  if (env?.ANTIGRAVITY_REFRESH_TOKEN) {
+    seen.add('primary');
+    accounts.push({
+      id: 'primary',
+      label: (env.ANTIGRAVITY_ACCOUNT_LABEL || 'Primary').trim() || 'Primary',
+      refreshToken: env.ANTIGRAVITY_REFRESH_TOKEN,
+      clientId: env.ANTIGRAVITY_CLIENT_ID,
+      clientSecret: env.ANTIGRAVITY_CLIENT_SECRET,
+    });
+  }
+
+  if (env?.ANTIGRAVITY_ACCOUNTS) {
+    try {
+      const parsed =
+        typeof env.ANTIGRAVITY_ACCOUNTS === 'string'
+          ? JSON.parse(env.ANTIGRAVITY_ACCOUNTS)
+          : env.ANTIGRAVITY_ACCOUNTS;
+      if (Array.isArray(parsed)) {
+        parsed.forEach((raw, idx) => {
+          if (!raw || typeof raw !== 'object' || !raw.refreshToken) return;
+          const rawId = String(raw.id || raw.label || `acc-${idx + 2}`)
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `acc-${idx + 2}`;
+          if (seen.has(rawId)) return;
+          seen.add(rawId);
+          accounts.push({
+            id: rawId,
+            label: String(raw.label || raw.id || `Account ${idx + 2}`).trim(),
+            refreshToken: String(raw.refreshToken).trim(),
+            clientId: raw.clientId || env.ANTIGRAVITY_CLIENT_ID,
+            clientSecret: raw.clientSecret || env.ANTIGRAVITY_CLIENT_SECRET,
+          });
+        });
+      }
+    } catch {
+      // Ignore malformed ANTIGRAVITY_ACCOUNTS JSON without breaking primary account
+    }
+  }
+
+  return accounts;
+}
+
+/**
  * Return a valid OAuth2 access token using KV cache or refresh_token exchange.
  */
-export async function getAccessToken(env) {
-  const refreshToken = env.ANTIGRAVITY_REFRESH_TOKEN;
-  const clientId = env.ANTIGRAVITY_CLIENT_ID;
-  const clientSecret = env.ANTIGRAVITY_CLIENT_SECRET;
+export async function getAccessToken(env, account = null) {
+  const accId = account?.id || 'primary';
+  const kvKey = accId === 'primary' ? KV_TOKEN_KEY : `${KV_TOKEN_KEY}:${accId}`;
+  const refreshToken = account?.refreshToken || env.ANTIGRAVITY_REFRESH_TOKEN;
+  const clientId = account?.clientId || env.ANTIGRAVITY_CLIENT_ID;
+  const clientSecret = account?.clientSecret || env.ANTIGRAVITY_CLIENT_SECRET;
   if (!refreshToken || !clientId || !clientSecret) {
     throw new Error(
       'ANTIGRAVITY_REFRESH_TOKEN, ANTIGRAVITY_CLIENT_ID, or ANTIGRAVITY_CLIENT_SECRET is not configured',
@@ -37,7 +90,7 @@ export async function getAccessToken(env) {
 
   const now = Date.now();
   if (env.QUOTA_KV) {
-    const cached = await env.QUOTA_KV.get(KV_TOKEN_KEY, 'json');
+    const cached = await env.QUOTA_KV.get(kvKey, 'json');
     if (
       cached &&
       typeof cached.accessToken === 'string' &&
@@ -87,7 +140,7 @@ export async function getAccessToken(env) {
 
   if (env.QUOTA_KV) {
     await env.QUOTA_KV.put(
-      KV_TOKEN_KEY,
+      kvKey,
       JSON.stringify({ accessToken: data.access_token, expiresAt }),
       { expirationTtl: Math.max(60, expiresInSec - 60) },
     );

@@ -3,6 +3,7 @@
  */
 
 import { computeBurnRateForecast } from './gemini_rpc.js';
+import { computeSeriesBurnRate, renderSparklineSvg } from './history.js';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -51,12 +52,33 @@ const SVG_AG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L3.5 2
 const SVG_GH = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12z"/></svg>`;
 const SVG_GEMINI = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81z"/></svg>`;
 
-export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
+export function renderDashboardHtml(latest, wakeState, offsetHours = 7, calendarInfo = null, history = []) {
   const ag = latest?.providers?.antigravity;
+  const agAccounts =
+    Array.isArray(latest?.providers?.antigravity_accounts) && latest.providers.antigravity_accounts.length > 0
+      ? latest.providers.antigravity_accounts
+      : ag
+        ? [{ id: 'primary', label: ag.account_label || 'Primary', ...ag }]
+        : [];
+  const multiAccount = agAccounts.length > 1;
   const copilot = latest?.providers?.github_copilot;
   const geminiWeb = latest?.providers?.gemini_web;
   const groups = Array.isArray(ag?.groups) ? ag.groups : [];
   const models = Array.isArray(ag?.models) ? ag.models : [];
+  const historyPoints = Array.isArray(history) ? history : [];
+  const calConfigured = Boolean(calendarInfo?.configured);
+  const calCfg = {
+    enabled: false,
+    syncCalendar: true,
+    syncTasks: false,
+    includeAntigravityWeekly: true,
+    includeGeminiWebWeekly: true,
+    includeCopilotMonthly: false,
+    allDay: false,
+    calendarId: 'primary',
+    reminderMinutes: 15,
+    ...(calendarInfo?.settings || {}),
+  };
 
   const fetchedMs = latest?.fetched_at ? latest.fetched_at * 1000 : null;
   const updatedAt = fetchedMs
@@ -66,21 +88,22 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const agResetMs = toEpochMs(ag?.rolling_reset_at);
 
   const wakeDecisions = ag?.wake_decisions || {};
-  const groupCards = groups
-    .map((g) => {
-      const lowerName = (g.name || '').toLowerCase();
-      const poolKey = lowerName.includes('gemini') ? 'gemini' : 'claude-gpt';
-      const decision = wakeDecisions[poolKey];
-      const decisionI18nKey = decision?.reason ? `wake_${decision.reason.replace(/[^a-z0-9_]/gi, '_')}` : '';
-      const decisionBadge = decision
-        ? `<span class="badge mono ${decision.shouldTrigger ? 'is-ok' : decision.reason?.startsWith('blocked:') ? 'is-danger' : ''}" data-i18n="${escapeHtml(decisionI18nKey)}" title="${escapeHtml([decision.reason, decision.modelId].filter(Boolean).join(' · '))}">${escapeHtml(decision.reason || '')}</span>`
-        : '';
+  const renderGroupCardsFor = (accGroups, accDecisions) =>
+    (accGroups || [])
+      .map((g) => {
+        const lowerName = (g.name || '').toLowerCase();
+        const poolKey = lowerName.includes('gemini') ? 'gemini' : 'claude-gpt';
+        const decision = (accDecisions || {})[poolKey];
+        const decisionI18nKey = decision?.reason ? `wake_${decision.reason.replace(/[^a-z0-9_]/gi, '_')}` : '';
+        const decisionBadge = decision
+          ? `<span class="badge mono ${decision.shouldTrigger ? 'is-ok' : decision.reason?.startsWith('blocked:') ? 'is-danger' : ''}" data-i18n="${escapeHtml(decisionI18nKey)}" title="${escapeHtml([decision.reason, decision.modelId].filter(Boolean).join(' · '))}">${escapeHtml(decision.reason || '')}</span>`
+          : '';
 
-      const windowsHtml = (g.windows || [])
-        .map((w) => {
-          const pct = w.remaining_percent ?? 0;
-          const resetMs = toEpochMs(w.reset_at);
-          return `
+        const windowsHtml = (g.windows || [])
+          .map((w) => {
+            const pct = w.remaining_percent ?? 0;
+            const resetMs = toEpochMs(w.reset_at);
+            return `
             <div class="win-row">
               <div class="win-info">
                 <div class="win-label">${escapeHtml(w.label)}</div>
@@ -97,10 +120,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
                 <span class="badge num ${toneClass(pct)}">${pct}%</span>
               </div>
             </div>`;
-        })
-        .join('');
+          })
+          .join('');
 
-      return `
+        return `
         <div class="pool-cell">
           <div class="pool-cell-head">
             <span class="pool-cell-name">${escapeHtml(g.name)}</span>
@@ -108,7 +131,61 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
           </div>
           ${windowsHtml}
         </div>`;
+      })
+      .join('');
+
+  const groupCards = renderGroupCardsFor(groups, wakeDecisions);
+  const extraAccountsHtml = multiAccount
+    ? agAccounts
+        .slice(1)
+        .map((acc) => {
+          const accCards = acc.error
+            ? `<div class="muted" style="color:var(--danger)">${escapeHtml(acc.error)}</div>`
+            : renderGroupCardsFor(acc.groups || [], acc.wake_decisions || {}) ||
+              '<div class="muted" data-i18n="noPoolData">Belum ada data pool kuota.</div>';
+          return `
+          <div class="extra-account">
+            <div class="extra-account-head">
+              <span class="pool-cell-name">${escapeHtml(acc.label || acc.id)}</span>
+              <span class="badge">${escapeHtml(acc.plan_tier || (acc.error ? 'Error' : 'Active'))}</span>
+            </div>
+            <div class="subpools-grid">${accCards}</div>
+          </div>`;
+        })
+        .join('')
+    : '';
+
+  const trendSeries = [
+    { key: 'ag_gem_5h', title: 'Antigravity Gemini (5h)', color: '#8a94ff' },
+    { key: 'ag_cg_5h', title: 'Antigravity Claude & GPT (5h)', color: '#34d399' },
+    { key: 'gw_5h', title: 'Gemini Web (5h)', color: '#60a5fa' },
+    { key: 'copilot', title: 'GitHub Copilot (Bulanan)', color: '#f59e0b' },
+  ];
+  const trendTiles = trendSeries
+    .map((s) => {
+      const rate = computeSeriesBurnRate(historyPoints, s.key);
+      if (rate.current === null && historyPoints.length > 0) return '';
+      const badgeText =
+        rate.status === 'insufficient'
+          ? 'Mengumpulkan data'
+          : rate.status === 'steady'
+            ? 'Stabil'
+            : `-${rate.pctPerHour}%/jam${rate.etaHours !== null ? ` · habis ~${rate.etaHours}j` : ''}`;
+      const badgeCls = rate.status === 'fast' ? 'is-danger' : rate.status === 'burning' ? 'is-warn' : 'is-ok';
+      return `
+        <div class="trend-tile">
+          <div class="trend-head">
+            <span class="trend-title">${escapeHtml(s.title)}</span>
+            <span class="badge num ${rate.current !== null ? toneClass(rate.current) : ''}">${rate.current !== null ? `${rate.current}%` : '—'}</span>
+          </div>
+          ${renderSparklineSvg(historyPoints, s.key, s.color, s.title)}
+          <div class="trend-foot">
+            <span class="badge num ${rate.status === 'insufficient' ? '' : badgeCls}">${escapeHtml(badgeText)}</span>
+            <span class="muted num">${historyPoints.length} sampel</span>
+          </div>
+        </div>`;
     })
+    .filter(Boolean)
     .join('');
 
   const modelRows = models
@@ -244,42 +321,33 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   <style>
     :root {
       color-scheme: dark;
-      /* daisyUI-inspired semantic tokens (night/slate) */
-      --b1: #0b0f17;
-      --b2: #111827;
-      --b3: #1a2234;
-      --bc: #f1f5f9;
-      --bc-muted: #94a3b8;
-      --p: #3b82f6;
-      --p-hover: #2563eb;
-      --su: #10b981;
-      --wa: #f59e0b;
-      --er: #ef4444;
+      /* Linear dark craft tokens (unified with Chrome extension) */
+      --bg: #08090a;
+      --surface: #0f1011;
+      --surface-inset: #16171a;
+      --surface-hover: #1e2024;
+      --text: #f7f8f8;
+      --muted: #9ba1a6;
+      --subtle: #6e747c;
+      --border: #23252a;
+      --border-strong: #34363d;
+      --accent: #5e6ad2;
+      --accent-hover: #6e7ae2;
+      --accent-soft: #8a94ff;
+      --ok: #34d399;
+      --warn: #f59e0b;
+      --danger: #f87171;
       --rounded-box: 12px;
       --rounded-btn: 8px;
       --rounded-badge: 6px;
-
-      /* Aliases */
-      --bg: var(--b1);
-      --surface: var(--b2);
-      --surface-inset: var(--b3);
-      --border: rgba(148, 163, 184, 0.14);
-      --border-strong: rgba(148, 163, 184, 0.24);
-      --text: var(--bc);
-      --muted: var(--bc-muted);
-      --accent: var(--p);
-      --accent-hover: var(--p-hover);
-      --ok: var(--su);
-      --warn: var(--wa);
-      --danger: var(--er);
       --ease: cubic-bezier(0.2, 0, 0, 1);
     }
     *, *::before, *::after { box-sizing: border-box; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
     body {
       margin: 0;
       font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 16px;
+      font-size: 15px;
       background: var(--bg);
       color: var(--text);
       padding: 0 20px 64px;
@@ -300,9 +368,9 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
-      padding: 16px 0 14px;
-      margin-bottom: 20px;
-      background: rgba(11, 15, 23, 0.86);
+      padding: 14px 0 13px;
+      margin-bottom: 18px;
+      background: rgba(8, 9, 10, 0.88);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
@@ -313,10 +381,10 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       background: var(--surface);
       border: 1px solid var(--border-strong);
       display: grid; place-items: center;
-      color: var(--accent);
+      color: var(--accent-soft);
     }
-    h1 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
-    .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.8125rem; color: var(--muted); }
+    h1 { font-size: 1.1rem; font-weight: 650; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+    .subline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
     .top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .pill {
       display: inline-flex; align-items: center; gap: 7px;
@@ -329,7 +397,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     }
     .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); flex-shrink: 0; }
 
-    /* daisyUI-style Tabbed Language Switch */
+    /* Segmented Language Switch */
     .lang-switch {
       display: inline-flex;
       padding: 3px;
@@ -347,13 +415,12 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       font-size: 0.75rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 120ms var(--ease);
+      transition: background-color 140ms var(--ease), color 140ms var(--ease);
     }
     .lang-btn:hover { color: var(--text); }
-    .lang-btn:active { transform: scale(0.96); }
     .lang-btn.is-active { background: var(--surface-inset); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
 
-    /* Unified Telemetry Strip (daisyUI stats-inspired) */
+    /* Unified Telemetry Strip */
     .kpi-strip {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -364,11 +431,11 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       overflow: hidden;
     }
     .kpi-cell {
-      padding: 16px 18px;
+      padding: 15px 18px;
       border-right: 1px solid var(--border);
-      transition: background-color 160ms var(--ease);
+      transition: background-color 150ms var(--ease);
     }
-    .kpi-cell:hover { background: rgba(26, 34, 52, 0.45); }
+    .kpi-cell:hover { background: var(--surface-inset); }
     .kpi-cell:last-child { border-right: 0; }
     @media (max-width: 760px) {
       .kpi-strip { grid-template-columns: 1fr; }
@@ -376,7 +443,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       .kpi-cell:last-child { border-bottom: 0; }
     }
     .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--muted); font-weight: 500; }
-    .kpi-val { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 2px; }
+    .kpi-val { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.025em; margin: 5px 0 2px; }
     .muted { color: var(--muted); font-size: 0.8rem; }
 
     /* Compact Command & Sync Bar */
@@ -386,49 +453,48 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--rounded-box);
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
     .input-wrap { position: relative; flex: 1; min-width: 210px; display: flex; align-items: center; }
-    input {
+    input[type="password"], input[type="text"], input[type="number"], input[type="search"] {
       width: 100%;
       background: var(--bg); color: var(--text);
       border: 1px solid var(--border); border-radius: var(--rounded-btn);
-      padding: 9px 36px 9px 12px; font-size: 0.84rem; outline: none;
-      transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+      padding: 8px 36px 8px 12px; font-size: 0.84rem; outline: none;
+      transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
     }
-    input::placeholder { color: #64748b; }
-    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16); }
+    input::placeholder { color: var(--subtle); }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.22); }
     .eye-btn {
-      position: absolute; right: 7px; width: 26px; height: 26px; padding: 0;
+      position: absolute; right: 6px; width: 26px; height: 26px; padding: 0;
       border: 0; border-radius: 6px; background: transparent; color: var(--muted);
       display: grid; place-items: center; cursor: pointer;
-      transition: color 150ms var(--ease), background-color 150ms var(--ease);
+      transition: color 140ms var(--ease), background-color 140ms var(--ease);
     }
     .eye-btn:hover { color: var(--text); background: var(--surface-inset); }
     .btn {
       display: inline-flex; align-items: center; gap: 7px;
       background: var(--accent); border: 1px solid transparent; color: #fff;
-      border-radius: var(--rounded-btn); padding: 9px 14px; font-size: 0.83rem; font-weight: 600;
+      border-radius: var(--rounded-btn); padding: 8px 14px; min-height: 36px; font-size: 0.82rem; font-weight: 600;
       cursor: pointer;
-      transition: background-color 150ms var(--ease), transform 140ms var(--ease), border-color 150ms var(--ease), opacity 150ms var(--ease);
+      transition: background-color 140ms var(--ease), border-color 140ms var(--ease), opacity 140ms var(--ease);
     }
-    .btn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
-    .btn:active:not(:disabled) { transform: scale(0.98); }
-    .btn:disabled { cursor: not-allowed; }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { cursor: not-allowed; opacity: 0.58; }
     .btn.sec { background: var(--surface-inset); border-color: var(--border-strong); color: var(--text); }
-    .btn.sec:hover:not(:disabled) { background: #222c42; border-color: rgba(148, 163, 184, 0.34); }
+    .btn.sec:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--accent-soft); }
     pre {
       background: var(--surface); border: 1px solid var(--border);
       padding: 12px 14px; border-radius: var(--rounded-btn); font-size: 0.77rem; overflow: auto;
-      display: none; margin: 0 0 16px;
+      display: none; margin: 0 0 14px;
     }
 
     /* Provider Cards & Flat Hairline Pools */
-    .pools { display: flex; flex-direction: column; gap: 16px; }
+    .pools { display: flex; flex-direction: column; gap: 14px; }
     .secondary-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 16px;
+      gap: 14px;
     }
     @media (min-width: 760px) {
       .secondary-grid {
@@ -439,14 +505,14 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--rounded-box);
-      padding: 18px 20px;
-      transition: border-color 180ms var(--ease), transform 180ms var(--ease);
+      padding: 16px 18px;
+      transition: border-color 160ms var(--ease);
     }
     .provider-card:hover {
       border-color: var(--border-strong);
     }
     .pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
-    .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 0.96rem; font-weight: 650; letter-spacing: -0.01em; }
+    .pool-title { display: inline-flex; align-items: center; gap: 9px; font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; }
     .provider-logo {
       width: 28px; height: 28px;
       border-radius: 7px;
@@ -456,74 +522,162 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
       flex-shrink: 0;
     }
     .provider-logo svg { width: 15px; height: 15px; fill: currentColor; }
-    .provider-logo.is-ag { color: #60a5fa; }
-    .provider-logo.is-gh { color: #f0f6fc; }
-    .provider-logo.is-gemini { color: #60a5fa; }
+    .provider-logo.is-ag { color: var(--accent-soft); }
+    .provider-logo.is-gh { color: var(--text); }
+    .provider-logo.is-gemini { color: var(--accent-soft); }
     .kpi-logo { width: 15px; height: 15px; display: inline-flex; align-items: center; }
     .kpi-logo svg { width: 15px; height: 15px; fill: currentColor; }
 
     .subpools-grid {
       display: grid;
       grid-template-columns: 1fr;
+      gap: 12px;
       border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+    @media (min-width: 760px) {
+      .subpools-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
     .pool-cell {
-      padding: 13px 0;
-      border-bottom: 1px solid var(--border);
+      padding: 12px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
     }
-    .pool-cell:last-child { border-bottom: 0; padding-bottom: 2px; }
     .pool-cell-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 8px;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .pool-cell-name {
-      font-size: 0.89rem;
+      font-size: 0.88rem;
       font-weight: 600;
       color: var(--text);
     }
     .win-row {
       display: flex; justify-content: space-between; align-items: center;
-      gap: 14px; padding: 7px 0;
+      gap: 12px; padding: 6px 0;
+      border-top: 1px solid var(--border);
     }
+    .win-row:first-of-type { border-top: 0; padding-top: 2px; }
     .win-info { min-width: 0; }
-    .win-label { font-size: 0.83rem; font-weight: 500; color: var(--text); margin-bottom: 2px; }
-    .win-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .bar-wrap { width: 112px; height: 6px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
-    .bar { height: 100%; border-radius: 999px; transition: width 280ms var(--ease); }
+    .win-label { font-size: 0.8rem; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+    .win-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+    .bar-wrap { width: 92px; height: 6px; background: var(--surface-inset); border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; border-radius: 999px; transition: width 260ms var(--ease); }
 
-    /* daisyUI-inspired semantic badges */
+    /* Semantic badges */
     .badge {
       display: inline-flex; align-items: center;
       padding: 2px 8px; border-radius: var(--rounded-badge);
-      font-size: 0.75rem; font-weight: 600;
+      font-size: 0.74rem; font-weight: 600;
       background: var(--surface-inset); color: var(--muted);
       border: 1px solid var(--border);
       white-space: nowrap;
     }
-    .badge.is-ok { color: var(--ok); background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.28); }
+    .badge.is-ok { color: var(--ok); background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.28); }
     .badge.is-warn { color: var(--warn); background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.28); }
-    .badge.is-danger { color: var(--danger); background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.28); }
+    .badge.is-danger { color: var(--danger); background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.3); }
 
     /* Details Table inside Antigravity */
-    details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .provider-card details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
     summary {
       display: inline-flex; align-items: center; gap: 6px;
       cursor: pointer; color: var(--muted); font-size: 0.83rem; font-weight: 500;
       padding: 4px 0;
-      transition: color 150ms var(--ease);
+      transition: color 140ms var(--ease);
     }
     summary:hover { color: var(--text); }
     .table-tools { margin: 10px 0 8px; }
     .table-wrap { overflow-x: auto; border-radius: var(--rounded-btn); border: 1px solid var(--border); background: var(--bg); }
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--border); font-size: 0.83rem; }
+    th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
     tbody tr { transition: background-color 120ms var(--ease); }
-    tbody tr:hover td { background: rgba(26, 34, 52, 0.55); }
+    tbody tr:hover td { background: var(--surface-inset); }
     tr:last-child td { border-bottom: 0; }
-    th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-inset); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-inset); }
+
+    /* Google Calendar & Tasks Settings Panel */
+    .cal-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--rounded-box);
+      padding: 13px 16px;
+      margin-bottom: 14px;
+      transition: border-color 150ms var(--ease);
+    }
+    .cal-panel:hover { border-color: var(--border-strong); }
+    .cal-panel summary {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      width: 100%; cursor: pointer; font-weight: 600; font-size: 0.875rem; color: var(--text); list-style: none; padding: 0;
+    }
+    .cal-panel summary::-webkit-details-marker { display: none; }
+    .cal-summary-left { display: inline-flex; align-items: center; gap: 9px; }
+    .cal-summary-right { display: inline-flex; align-items: center; gap: 8px; }
+    .cal-chevron { color: var(--muted); transition: transform 160ms var(--ease); }
+    .cal-panel[open] .cal-chevron { transform: rotate(180deg); }
+    .cal-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+    .cal-section-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 6px; }
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 8px;
+    }
+    .cal-check {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; min-height: 36px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--rounded-btn);
+      font-size: 0.8rem; font-weight: 500; color: var(--text); cursor: pointer;
+      transition: border-color 140ms var(--ease), background-color 140ms var(--ease);
+    }
+    .cal-check:hover { border-color: var(--border-strong); background: var(--surface-inset); }
+    .cal-check:has(input:checked) { border-color: rgba(94, 106, 210, 0.55); background: rgba(94, 106, 210, 0.09); }
+    .cal-check input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; flex-shrink: 0; cursor: pointer; }
+    .cal-inputs {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 240px));
+      gap: 10px;
+    }
+    .cal-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem; font-weight: 500; color: var(--muted); }
+    .cal-field input { padding: 7px 10px; }
+    .cal-hint { font-size: 0.72rem; color: var(--subtle); font-weight: 400; }
+    .cal-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; }
+    .cal-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .cal-msg { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+    .cal-msg.is-ok { color: var(--ok); }
+    .cal-msg.is-danger { color: var(--danger); }
+
+    /* Burn-Rate & Usage History Sparklines */
+    .trend-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--rounded-box);
+      padding: 15px 18px;
+      margin-bottom: 14px;
+    }
+    .trend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    .trend-tile {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .trend-head, .trend-foot {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .trend-title { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+    .sparkline { width: 100%; height: 42px; display: block; }
+    .extra-account { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border-strong); }
+    .extra-account-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 
     svg.lucide { width: 15px; height: 15px; stroke-width: 1.85; flex-shrink: 0; }
     @media (prefers-reduced-motion: reduce) {
@@ -590,18 +744,88 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     </section>
     <pre id="out" aria-live="polite"></pre>
 
+    <details class="cal-panel" id="calPanel">
+      <summary>
+        <span class="cal-summary-left">
+          <i data-lucide="calendar-check" aria-hidden="true"></i>
+          <span data-i18n="calPanelTitle">Google Calendar &amp; Tasks (Reset Mingguan)</span>
+        </span>
+        <span class="cal-summary-right">
+          <span class="badge ${calConfigured ? (calCfg.enabled ? 'is-ok' : '') : 'is-warn'}" id="calStatusBadge">
+            ${calConfigured ? (calCfg.enabled ? 'Aktif' : 'Siap') : 'OAuth belum disetup'}
+          </span>
+          <i data-lucide="chevron-down" class="cal-chevron" aria-hidden="true"></i>
+        </span>
+      </summary>
+      <div class="cal-body">
+        <div class="muted" data-i18n="calPanelNote">
+          Hanya menyinkronkan reset mingguan (dan opsional bulanan Copilot); limit 5 jam tidak dimasukkan. Isi X-Auth-Token di atas untuk menyimpan.
+        </div>
+        <div>
+          <div class="cal-section-label" data-i18n="calTargetSection">Tujuan &amp; Mode</div>
+          <div class="cal-grid">
+            <label class="cal-check"><input type="checkbox" id="calEnabled" ${calCfg.enabled ? 'checked' : ''} /> <span data-i18n="calEnabled">Aktifkan auto-sync</span></label>
+            <label class="cal-check"><input type="checkbox" id="calSyncCalendar" ${calCfg.syncCalendar ? 'checked' : ''} /> <span>Google Calendar</span></label>
+            <label class="cal-check"><input type="checkbox" id="calSyncTasks" ${calCfg.syncTasks ? 'checked' : ''} /> <span>Google Tasks</span></label>
+            <label class="cal-check"><input type="checkbox" id="calAllDay" ${calCfg.allDay ? 'checked' : ''} /> <span data-i18n="calAllDay">Seharian (tanpa jam)</span></label>
+          </div>
+        </div>
+        <div>
+          <div class="cal-section-label" data-i18n="calSourceSection">Jadwal Reset</div>
+          <div class="cal-grid">
+            <label class="cal-check"><input type="checkbox" id="calAgWeekly" ${calCfg.includeAntigravityWeekly ? 'checked' : ''} /> <span>Antigravity Weekly</span></label>
+            <label class="cal-check"><input type="checkbox" id="calGwWeekly" ${calCfg.includeGeminiWebWeekly ? 'checked' : ''} /> <span>Gemini Web Weekly</span></label>
+            <label class="cal-check"><input type="checkbox" id="calCopilotMonthly" ${calCfg.includeCopilotMonthly ? 'checked' : ''} /> <span>Copilot Monthly</span></label>
+          </div>
+        </div>
+        <div class="cal-inputs">
+          <label class="cal-field">
+            <span data-i18n="calIdLabel">Calendar ID</span>
+            <input id="calId" type="text" value="${escapeHtml(calCfg.calendarId || 'primary')}" placeholder="primary" />
+            <span class="cal-hint" data-i18n="calIdHint">Biarkan primary untuk kalender utama</span>
+          </label>
+          <label class="cal-field">
+            <span data-i18n="calReminderLabel">Pengingat (menit)</span>
+            <input id="calReminder" type="number" min="0" max="1440" value="${Number(calCfg.reminderMinutes ?? 15)}" />
+            <span class="cal-hint" data-i18n="calReminderHint">0 = tanpa notifikasi popup</span>
+          </label>
+        </div>
+        <div class="cal-footer">
+          <div class="cal-btns">
+            <button id="btnCalSave" class="btn" type="button"><i data-lucide="save" aria-hidden="true"></i><span data-i18n="btnCalSave">Simpan pengaturan</span></button>
+            <button id="btnCalSync" class="btn sec" type="button"><i data-lucide="refresh-cw" aria-hidden="true"></i><span data-i18n="btnCalSync">Sync sekarang</span></button>
+          </div>
+          <span id="calMsg" class="cal-msg" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </details>
+
+    <section class="trend-card" aria-label="Tren Pemakaian & Burn-Rate">
+      <div class="pool-header" style="margin-bottom:10px;">
+        <div class="pool-title">
+          <i data-lucide="trending-down" aria-hidden="true"></i>
+          <span data-i18n="trendCardTitle">Tren Pemakaian &amp; Burn-Rate (24j)</span>
+        </div>
+        <span class="badge num">${historyPoints.length} / 96</span>
+      </div>
+      <div class="trend-grid">
+        ${trendTiles || '<div class="muted">Mengumpulkan riwayat pemakaian setiap 15 menit...</div>'}
+      </div>
+    </section>
+
     <section class="pools">
       <div class="provider-card">
         <div class="pool-header">
           <div class="pool-title">
             <span class="provider-logo is-ag">${SVG_AG}</span>
-            <span>Antigravity</span>
+            <span>Antigravity${multiAccount ? ` (${agAccounts.length} akun)` : ''}</span>
           </div>
           <span class="badge">${escapeHtml(ag?.plan_tier || 'Active')}</span>
         </div>
         <div class="subpools-grid">
           ${groupCards || '<div class="muted" data-i18n="noPoolData">Belum ada data pool kuota.</div>'}
         </div>
+        ${extraAccountsHtml}
         <details>
           <summary><i data-lucide="list"></i><span><span data-i18n="allModelsTitle">Detail semua model Antigravity</span> (${models.length})</span></summary>
           <div class="table-tools">
@@ -669,6 +893,18 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         wake_wake_failed: 'wake gagal',
         wake_disabled: 'nonaktif',
         wake_outside_time_window: 'di luar jadwal',
+        calPanelTitle: 'Google Calendar & Tasks (Reset Mingguan)',
+        calPanelNote: 'Hanya menyinkronkan reset mingguan (dan opsional bulanan Copilot); limit 5 jam tidak dimasukkan. Isi X-Auth-Token di atas untuk menyimpan.',
+        calTargetSection: 'Tujuan & Mode',
+        calSourceSection: 'Jadwal Reset',
+        calEnabled: 'Aktifkan auto-sync',
+        calAllDay: 'Seharian (tanpa jam)',
+        calIdLabel: 'Calendar ID',
+        calIdHint: 'Biarkan primary untuk kalender utama',
+        calReminderLabel: 'Pengingat (menit)',
+        calReminderHint: '0 = tanpa notifikasi popup',
+        btnCalSave: 'Simpan pengaturan',
+        btnCalSync: 'Sync sekarang',
       },
       en: {
         lastSyncLabel: 'Last sync',
@@ -711,6 +947,18 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
         wake_wake_failed: 'wake failed',
         wake_disabled: 'disabled',
         wake_outside_time_window: 'outside window',
+        calPanelTitle: 'Google Calendar & Tasks (Weekly Resets)',
+        calPanelNote: 'Syncs weekly resets only (plus optional Copilot monthly); 5h windows are excluded. Enter X-Auth-Token above to save.',
+        calTargetSection: 'Targets & Mode',
+        calSourceSection: 'Reset Schedules',
+        calEnabled: 'Enable auto-sync',
+        calAllDay: 'All-day (no time)',
+        calIdLabel: 'Calendar ID',
+        calIdHint: 'Leave primary for your main calendar',
+        calReminderLabel: 'Reminder (minutes)',
+        calReminderHint: '0 = no popup notification',
+        btnCalSave: 'Save settings',
+        btnCalSync: 'Sync now',
       },
     };
 
@@ -838,25 +1086,92 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
     if (btnSync) btnSync.addEventListener('click', () => callApi('/api/automation/tick'));
     if (btnWake) btnWake.addEventListener('click', () => callApi('/api/automation/wake'));
 
+    function readCalForm() {
+      return {
+        enabled: Boolean(document.getElementById('calEnabled')?.checked),
+        syncCalendar: Boolean(document.getElementById('calSyncCalendar')?.checked),
+        syncTasks: Boolean(document.getElementById('calSyncTasks')?.checked),
+        includeAntigravityWeekly: Boolean(document.getElementById('calAgWeekly')?.checked),
+        includeGeminiWebWeekly: Boolean(document.getElementById('calGwWeekly')?.checked),
+        includeCopilotMonthly: Boolean(document.getElementById('calCopilotMonthly')?.checked),
+        allDay: Boolean(document.getElementById('calAllDay')?.checked),
+        calendarId: (document.getElementById('calId')?.value || 'primary').trim() || 'primary',
+        reminderMinutes: Number(document.getElementById('calReminder')?.value ?? 15),
+      };
+    }
+
+    const btnCalSave = document.getElementById('btnCalSave');
+    const btnCalSync = document.getElementById('btnCalSync');
+    if (btnCalSave) btnCalSave.addEventListener('click', () => callCalendarApi('/api/settings/calendar', 'PUT', readCalForm()));
+    if (btnCalSync) btnCalSync.addEventListener('click', () => callCalendarApi('/api/calendar/sync', 'POST'));
+
+    async function callCalendarApi(path, method, payload = null) {
+      const msgEl = document.getElementById('calMsg');
+      const badgeEl = document.getElementById('calStatusBadge');
+      const btns = document.querySelectorAll('.cal-btns .btn');
+      btns.forEach((b) => { b.disabled = true; });
+      if (msgEl) { msgEl.className = 'cal-msg'; msgEl.textContent = 'Menyimpan...'; }
+      try {
+        const tok = tokInput.value.trim();
+        if (tok) localStorage.setItem('qra_auth_token', tok);
+        const headers = { 'X-Auth-Token': tok };
+        if (payload !== null) headers['Content-Type'] = 'application/json';
+        const res = await fetch(path, {
+          method,
+          headers,
+          body: payload !== null ? JSON.stringify(payload) : undefined,
+        });
+        const body = await res.json().catch(() => ({ status: res.status }));
+        if (res.ok && body.ok !== false) {
+          const synced = body?.sync?.synced?.length ?? body?.synced?.length ?? 0;
+          if (msgEl) {
+            msgEl.className = 'cal-msg is-ok';
+            msgEl.textContent = method === 'PUT'
+              ? (synced > 0 ? 'Tersimpan & tersinkron (' + synced + ' item)' : 'Pengaturan tersimpan')
+              : 'Tersinkron (' + synced + ' item)';
+          }
+          if (badgeEl && method === 'PUT' && body.configured) {
+            badgeEl.textContent = body.settings?.enabled ? 'Aktif' : 'Siap';
+            badgeEl.className = 'badge ' + (body.settings?.enabled ? 'is-ok' : '');
+          }
+        } else {
+          const errMsg = (body.errors && body.errors[0]) || body.error || ('HTTP ' + res.status);
+          if (msgEl) { msgEl.className = 'cal-msg is-danger'; msgEl.textContent = errMsg; }
+        }
+      } catch (err) {
+        if (msgEl) { msgEl.className = 'cal-msg is-danger'; msgEl.textContent = err?.message || 'Network error'; }
+      } finally {
+        btns.forEach((b) => { b.disabled = false; });
+      }
+    }
+
     if (tokInput) {
       tokInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') callApi('/api/automation/tick');
       });
     }
 
-    async function callApi(path) {
+    async function callApi(path, method = 'POST', payload = null) {
       const out = document.getElementById('out');
-      const btns = document.querySelectorAll('.actions .btn');
+      const btns = document.querySelectorAll('.actions .btn, .cal-btns .btn');
       btns.forEach((b) => { b.disabled = true; b.style.opacity = '0.6'; });
       out.style.display = 'block';
       out.textContent = 'Running...';
       try {
         const tok = tokInput.value.trim();
         if (tok) localStorage.setItem('qra_auth_token', tok);
-        const res = await fetch(path, { method: 'POST', headers: { 'X-Auth-Token': tok } });
+        const headers = { 'X-Auth-Token': tok };
+        if (payload !== null) headers['Content-Type'] = 'application/json';
+        const res = await fetch(path, {
+          method,
+          headers,
+          body: payload !== null ? JSON.stringify(payload) : undefined,
+        });
         const body = await res.json().catch(() => ({ status: res.status }));
         out.textContent = JSON.stringify(body, null, 2);
-        if (res.ok) setTimeout(() => location.reload(), 1200);
+        if (res.ok && method === 'POST' && path.startsWith('/api/automation/')) {
+          setTimeout(() => location.reload(), 1200);
+        }
       } catch (err) {
         out.textContent = JSON.stringify({ error: err?.message || 'Network error' }, null, 2);
       } finally {

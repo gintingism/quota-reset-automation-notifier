@@ -29,7 +29,11 @@ NOTIFY_ON_RESET = "true"
 # Secrets to set via `wrangler secret put <NAME>`:
 # - AUTH_TOKEN
 # - ANTIGRAVITY_REFRESH_TOKEN
+# - ANTIGRAVITY_ACCOUNTS (optional JSON array for multi-account: [{"id":"work","label":"Work","refreshToken":"1//..."}])
 # - TELEGRAM_BOT_TOKEN (optional)
 # - TELEGRAM_CHAT_ID (optional)
 # - DISCORD_WEBHOOK_URL (optional)
 # - GITHUB_TOKEN (optional, for GitHub Copilot)
+# - GCAL_CLIENT_ID (optional, for Google Calendar & Tasks weekly reset sync)
+# - GCAL_CLIENT_SECRET (optional)
+# - GCAL_REFRESH_TOKEN (optional)

@@ -62,9 +62,10 @@ async function postCloudCode(path, body, accessToken) {
 /**
  * Resolve cloudaicompanionProject ID and tier metadata via loadCodeAssist.
  */
-export async function resolveProjectInfo(accessToken, kv) {
+export async function resolveProjectInfo(accessToken, kv, accountId = 'primary') {
+  const cacheKey = accountId === 'primary' ? KV_PROJECT_KEY : `${KV_PROJECT_KEY}:${accountId}`;
   if (kv) {
-    const cached = await kv.get(KV_PROJECT_KEY, 'json');
+    const cached = await kv.get(cacheKey, 'json');
     if (cached && cached.projectId) {
       return cached;
     }
@@ -94,7 +95,7 @@ export async function resolveProjectInfo(accessToken, kv) {
   const info = { projectId, tierId };
 
   if (kv && projectId) {
-    await kv.put(KV_PROJECT_KEY, JSON.stringify(info), {
+    await kv.put(cacheKey, JSON.stringify(info), {
       expirationTtl: PROJECT_CACHE_TTL_SEC,
     });
   }

@@ -285,7 +285,7 @@ function setupFrameRules() {
 }
 
 async function performSilentSync() {
-  if (isSyncing) return;
+  if (isSyncing) return { ok: true, busy: true };
   isSyncing = true;
 
   // Step 1: Try lightweight direct batchexecute RPC first (no offscreen iframe needed)
@@ -295,12 +295,12 @@ async function performSilentSync() {
     updateBadge(rpcData);
     await pushToWorker(rpcData);
     isSyncing = false;
-    return;
+    return { ok: true, mode: 'rpc' };
   } catch (err) {
     if (err instanceof GeminiAuthError) {
       await chrome.storage.local.set({ lastSyncError: err.message });
       isSyncing = false;
-      return;
+      return { ok: false, error: err.message };
     }
   }
 
@@ -311,12 +311,12 @@ async function performSilentSync() {
     updateBadge(gqlData);
     await pushToWorker(gqlData);
     isSyncing = false;
-    return;
+    return { ok: true, mode: 'graphql' };
   } catch (err) {
     if (err instanceof GeminiAuthError) {
       await chrome.storage.local.set({ lastSyncError: err.message });
       isSyncing = false;
-      return;
+      return { ok: false, error: err.message };
     }
     // Fallback to hidden offscreen DOM scraper if both RPC & GraphQL fail
   }
@@ -343,8 +343,10 @@ async function performSilentSync() {
     chrome.runtime
       .sendMessage({ action: 'SCRAPE_HIDDEN', url: 'https://gemini.google.com/usage' })
       .catch(() => cleanupSyncWindow());
-  } catch {
+    return { ok: true, mode: 'dom', pending: true };
+  } catch (err) {
     cleanupSyncWindow();
+    return { ok: false, error: err?.message || 'Sync failed' };
   }
 }
 
@@ -389,7 +391,12 @@ async function pushToWorker(data) {
             reset_at: data.weeklyResetAt || null,
           },
         ],
-        source: data.sourceMode === 'rpc' ? 'extension-rpc' : 'extension',
+        source:
+          data.sourceMode === 'rpc'
+            ? 'extension-rpc'
+            : data.sourceMode === 'graphql'
+              ? 'extension-graphql'
+              : 'extension',
         estimated: false,
       },
     },
@@ -433,17 +440,20 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   } else if (request.action === 'SYNC_FAILED') {
     cleanupSyncWindow();
   } else if (request.action === 'START_SYNC') {
-    performSilentSync();
-    sendResponse({ ok: true });
-  } else if (request.action === 'FORCE_TICK') {
+    performSilentSync()
+      .then((result) => sendResponse(result || { ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || 'Sync error' }));
+    return true;
+  } else if (request.action === 'FORCE_TICK' || request.action === 'FORCE_WAKE') {
+    const endpoint = request.action === 'FORCE_WAKE' ? '/api/automation/wake' : '/api/automation/tick';
     chrome.storage.local.get(['workerUrl', 'authToken'], async ({ workerUrl, authToken }) => {
       if (!workerUrl || !authToken) {
-        sendResponse({ ok: false });
+        sendResponse({ ok: false, error: 'Missing Worker settings' });
         return;
       }
       try {
         const base = workerUrl.replace(/\/+$/, '');
-        const res = await fetch(`${base}/api/automation/tick`, {
+        const res = await fetch(`${base}${endpoint}`, {
           method: 'POST',
           headers: { 'X-Auth-Token': authToken },
         });

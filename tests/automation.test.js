@@ -25,6 +25,13 @@ import {
   parseGeminiGraphqlUsage,
   computeBurnRateForecast,
 } from '../src/gemini_rpc.js';
+import {
+  extractScheduledResets,
+  buildCalendarEventBody,
+  syncWeeklyResetsToGoogle,
+} from '../src/calendar.js';
+import { resolveAntigravityAccounts } from '../src/oauth.js';
+import { appendHistoryPoint, computeSeriesBurnRate, renderSparklineSvg } from '../src/history.js';
 
 test('shouldTriggerOnReset enforces all 4 guards', () => {
   const now = Date.parse('2026-11-13T05:00:00Z');
@@ -573,6 +580,149 @@ test('shouldTriggerOnReset retries unstarted rolling 5h window (4.5h-5.5h) and w
     ).reason,
     'not_full',
   );
+});
+
+test('extractScheduledResets includes only weekly/optional monthly resets and excludes 5h & Argon', () => {
+  const snapshot = {
+    providers: {
+      antigravity: {
+        groups: [
+          {
+            name: 'Gemini Models',
+            windows: [
+              { window_type: '5H', label: '5h limit', remaining_percent: 80, reset_time_iso: '2026-11-26T08:15:00.000Z' },
+              { window_type: 'WEEKLY', label: 'Weekly limit', remaining_percent: 80, reset_time_iso: '2026-11-30T20:15:00.000Z' },
+            ],
+          },
+          {
+            name: 'Gemini 4 Argon',
+            windows: [{ window_type: 'WEEKLY', label: 'Weekly limit', remaining_percent: 80, reset_time_iso: '2026-11-30T20:15:00.000Z' }],
+          },
+        ],
+      },
+      gemini_web: {
+        plan_tier: 'AI Pro',
+        daily_reset_at: '2026-11-26T09:00:00.000Z',
+        weekly_used: 25,
+        weekly_reset_at: '2026-12-01T00:00:00.000Z',
+      },
+      github_copilot: {
+        percent_remaining: 34,
+        reset_time_iso: '2026-12-01T00:00:00.000Z',
+      },
+    },
+  };
+
+  const weeklyOnly = extractScheduledResets(snapshot, {
+    includeAntigravityWeekly: true,
+    includeGeminiWebWeekly: true,
+    includeCopilotMonthly: false,
+  });
+  assert.deepEqual(
+    weeklyOnly.map((e) => e.key),
+    ['ag:gemini:weekly', 'gemini_web:weekly'],
+  );
+
+  const allDayBody = buildCalendarEventBody(weeklyOnly[0], { allDay: true, reminderMinutes: 15 }, 7);
+  assert.deepEqual(allDayBody.start, { date: '2026-12-01' });
+  assert.deepEqual(allDayBody.end, { date: '2026-12-02' });
+});
+
+test('syncWeeklyResetsToGoogle upserts Calendar events & Google Tasks and skips unchanged cycles', async () => {
+  const kvStore = new Map();
+  const kv = {
+    get: async (k) => (kvStore.has(k) ? JSON.parse(kvStore.get(k)) : null),
+    put: async (k, v) => kvStore.set(k, v),
+  };
+  const calls = [];
+  const fakeFetch = async (url, init) => {
+    calls.push({ url: String(url), method: init?.method || 'GET' });
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return { ok: true, status: 200, json: async () => ({ access_token: 'tok_cal', expires_in: 3600 }) };
+    }
+    if (String(url).includes('/calendar/v3/')) {
+      return { ok: true, status: 200, json: async () => ({ id: 'evt_1' }) };
+    }
+    if (String(url).includes('/tasks/v1/')) {
+      return { ok: true, status: 200, json: async () => ({ id: 'tsk_1' }) };
+    }
+    return { ok: false, status: 500, json: async () => ({}) };
+  };
+
+  const env = {
+    QUOTA_KV: kv,
+    GCAL_CLIENT_ID: 'cid',
+    GCAL_CLIENT_SECRET: 'csec',
+    GCAL_REFRESH_TOKEN: 'rtok',
+    TIMEZONE_OFFSET_HOURS: '7',
+  };
+  const snapshot = {
+    providers: {
+      gemini_web: { plan_tier: 'AI Pro', weekly_used: 20, weekly_reset_at: '2026-12-01T00:00:00.000Z' },
+    },
+  };
+  const settings = {
+    enabled: true,
+    syncCalendar: true,
+    syncTasks: true,
+    includeAntigravityWeekly: false,
+    includeGeminiWebWeekly: true,
+    includeCopilotMonthly: false,
+  };
+
+  const first = await syncWeeklyResetsToGoogle(env, snapshot, { settings, fetchImpl: fakeFetch });
+  assert.equal(first.ok, true);
+  assert.deepEqual(first.synced, ['gemini_web:weekly']);
+  assert.equal(calls.filter((c) => c.method === 'POST').length, 3); // token + event + task
+
+  const second = await syncWeeklyResetsToGoogle(env, snapshot, { settings, fetchImpl: fakeFetch });
+  assert.equal(second.ok, true);
+  assert.deepEqual(second.skipped, ['gemini_web:weekly']);
+  assert.equal(calls.length, 3); // no extra API calls on unchanged cycle
+});
+
+test('resolveAntigravityAccounts merges primary env with optional ANTIGRAVITY_ACCOUNTS JSON', () => {
+  const accounts = resolveAntigravityAccounts({
+    ANTIGRAVITY_CLIENT_ID: 'cid',
+    ANTIGRAVITY_CLIENT_SECRET: 'csec',
+    ANTIGRAVITY_REFRESH_TOKEN: 'rt_primary',
+    ANTIGRAVITY_ACCOUNTS: JSON.stringify([
+      { id: 'work', label: 'Work', refreshToken: 'rt_work' },
+      { id: 'primary', label: 'Dup', refreshToken: 'rt_dup' },
+    ]),
+  });
+  assert.equal(accounts.length, 2);
+  assert.equal(accounts[0].id, 'primary');
+  assert.equal(accounts[1].id, 'work');
+  assert.equal(accounts[1].clientId, 'cid');
+});
+
+test('appendHistoryPoint, computeSeriesBurnRate, and renderSparklineSvg track burn rate and ignore resets', () => {
+  const t0 = Date.parse('2026-11-26T00:00:00Z');
+  const snap = (pct) => ({
+    providers: {
+      antigravity: {
+        groups: [{ name: 'Gemini Models', windows: [{ window_type: '5H', remaining_percent: pct }] }],
+      },
+    },
+  });
+
+  let h = appendHistoryPoint([], snap(100), t0);
+  assert.equal(h.changed, true);
+  // Same value 5m later -> skipped
+  let hSkip = appendHistoryPoint(h.points, snap(100), t0 + 5 * 60 * 1000);
+  assert.equal(hSkip.changed, false);
+  // 1 hour later dropped to 70% -> recorded
+  h = appendHistoryPoint(h.points, snap(70), t0 + 3600 * 1000);
+  assert.equal(h.changed, true);
+  assert.equal(h.points.length, 2);
+
+  const rate = computeSeriesBurnRate(h.points, 'ag_gem_5h');
+  assert.equal(rate.pctPerHour, 30);
+  assert.equal(rate.status, 'burning');
+
+  const svg = renderSparklineSvg(h.points, 'ag_gem_5h', '#8a94ff', 'Gemini 5h');
+  assert.match(svg, /<polyline/);
 });
 
 

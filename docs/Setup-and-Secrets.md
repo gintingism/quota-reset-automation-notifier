@@ -14,6 +14,10 @@ Set each secret with `npx wrangler secret put <NAME>`:
 | `TELEGRAM_CHAT_ID` | Optional | Target chat ID for Telegram alerts |
 | `DISCORD_WEBHOOK_URL` | Optional | Incoming webhook URL for Discord alerts |
 | `GITHUB_TOKEN` | Optional | GitHub token (e.g. `gh auth token`) for GitHub Copilot AI credits tracking |
+| `ANTIGRAVITY_ACCOUNTS` | Optional | JSON array of extra Antigravity accounts: `[{"id":"work","label":"Work","refreshToken":"1//..."}]` |
+| `GCAL_CLIENT_ID` | Optional | Google Cloud OAuth2 client ID for Google Calendar & Tasks weekly reset sync |
+| `GCAL_CLIENT_SECRET` | Optional | Google Cloud OAuth2 client secret for Google Calendar & Tasks |
+| `GCAL_REFRESH_TOKEN` | Optional | Refresh token obtained via `npm run auth:calendar` |
 
 ## Getting `ANTIGRAVITY_REFRESH_TOKEN`
 
@@ -24,6 +28,18 @@ npm run auth
 ```
 
 Open the printed Google OAuth URL, sign in, and copy `ANTIGRAVITY_REFRESH_TOKEN` from the terminal output.
+
+## Getting `GCAL_REFRESH_TOKEN` (Google Calendar & Tasks)
+
+Enable **Google Calendar API** and **Google Tasks API** in Google Cloud Console, create a **Desktop app** OAuth client, then run:
+
+```powershell
+$env:GCAL_CLIENT_ID = "<gcal-client-id>"
+$env:GCAL_CLIENT_SECRET = "<gcal-client-secret>"
+npm run auth:calendar
+```
+
+Open the printed URL, approve Calendar and Tasks access, and store `GCAL_CLIENT_ID`, `GCAL_CLIENT_SECRET`, and `GCAL_REFRESH_TOKEN` with `npx wrangler secret put`. Enable auto-sync from the dashboard or the extension's Settings tab.
 
 ## Installing the Chrome Extension (`extension/`)
 

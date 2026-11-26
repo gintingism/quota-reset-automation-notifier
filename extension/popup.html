@@ -10,10 +10,10 @@
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
-          <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81z"/>
+          <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12.49 12 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81z"/>
         </svg>
       </div>
-      <div>
+      <div class="brand-copy">
         <h1 class="brand-title">Gemini Quota Sync</h1>
         <div class="brand-sub"><span id="geminiPlanBadge">gemini.google.com/usage</span></div>
       </div>
@@ -23,33 +23,41 @@
         <button type="button" class="lang-btn is-active" data-lang="id" aria-pressed="true">ID</button>
         <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
       </div>
-      <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka gemini.google.com/usage">
-        <i data-lucide="external-link"></i>
+      <a id="dashboardLink" class="icon-btn" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" title="Buka gemini.google.com/usage" aria-label="Buka gemini.google.com/usage">
+        <i data-lucide="external-link" aria-hidden="true"></i>
       </a>
     </div>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Tampilan">
-    <button type="button" class="tab-btn is-active" data-tab="status" role="tab" aria-selected="true">
-      <i data-lucide="activity"></i>
+    <button id="tab-status" type="button" class="tab-btn is-active" data-tab="status" role="tab" aria-selected="true" aria-controls="panel-status">
+      <i data-lucide="activity" aria-hidden="true"></i>
       <span data-i18n="tabStatus">Status</span>
     </button>
-    <button type="button" class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
-      <i data-lucide="sliders-horizontal"></i>
+    <button id="tab-settings" type="button" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">
+      <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
       <span data-i18n="tabSettings">Pengaturan</span>
     </button>
   </nav>
 
-  <main id="panel-status" class="panel" role="tabpanel">
+  <main id="panel-status" class="panel" role="tabpanel" aria-labelledby="tab-status">
     <div class="status-bar">
       <div class="status-pill">
-        <span id="syncDot" class="dot"></span>
-        <span id="syncStatus" class="status-text num" aria-live="polite">Worker: —</span>
+        <span id="syncDot" class="dot" aria-hidden="true"></span>
+        <span id="syncStatus" class="status-text num" role="status" aria-live="polite">Worker: —</span>
       </div>
       <a id="openWorkerBtn" class="link-btn" href="#" target="_blank" rel="noreferrer" hidden>
         <span data-i18n="openDashboard">Dashboard</span>
-        <i data-lucide="arrow-up-right"></i>
+        <i data-lucide="arrow-up-right" aria-hidden="true"></i>
       </a>
+    </div>
+
+    <div id="geminiAuthBanner" class="hint-banner is-warn" hidden>
+      <div class="hint-copy">
+        <i data-lucide="log-in" aria-hidden="true"></i>
+        <span data-i18n="geminiLoginHint">Login ke Gemini Web agar kuota terbaca.</span>
+      </div>
+      <a class="hint-action" href="https://gemini.google.com/usage" target="_blank" rel="noreferrer" data-i18n="openGeminiBtn">Buka Gemini</a>
     </div>
 
     <section class="card ring-card" aria-label="Kuota Sesi 5 Jam">
@@ -66,18 +74,18 @@
       <div class="card-meta">
         <div class="card-label-row">
           <span class="card-title">
-            <i data-lucide="gauge"></i>
+            <i data-lucide="gauge" aria-hidden="true"></i>
             <span data-i18n="session5hTitle">Sesi 5h</span>
           </span>
           <span id="dailyBadge" class="badge num">—</span>
         </div>
         <div id="dailyCountdown" class="countdown-val num">—</div>
         <div class="meta-line">
-          <i data-lucide="clock"></i>
+          <i data-lucide="clock" aria-hidden="true"></i>
           <span id="dailyReset" class="num">Reset: —</span>
         </div>
         <div class="meta-line">
-          <i data-lucide="trending-up"></i>
+          <i data-lucide="trending-up" aria-hidden="true"></i>
           <span id="dailyPace" class="num">—</span>
         </div>
       </div>
@@ -86,26 +94,34 @@
     <section class="card" aria-label="Kuota Mingguan">
       <div class="bar-header">
         <span class="card-title">
-          <i data-lucide="calendar-days"></i>
+          <i data-lucide="calendar-days" aria-hidden="true"></i>
           <span data-i18n="weeklyTitle">Mingguan</span>
         </span>
         <span id="weekly" class="bar-value num">—</span>
       </div>
-      <div class="bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div class="bar-track" role="progressbar" aria-label="Kuota mingguan Gemini Web" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div id="weeklyBar" class="bar-fill"></div>
       </div>
       <div class="split-meta">
         <div class="meta-line">
-          <i data-lucide="clock"></i>
+          <i data-lucide="clock" aria-hidden="true"></i>
           <span id="weeklyReset" class="num">Reset: —</span>
         </div>
         <span id="weeklyCountdown" class="badge num">—</span>
       </div>
-      <div class="meta-line" style="margin-top:5px;">
-        <i data-lucide="trending-up"></i>
+      <div class="meta-line meta-line-spaced">
+        <i data-lucide="trending-up" aria-hidden="true"></i>
         <span id="weeklyPace" class="num">—</span>
       </div>
     </section>
+
+    <div id="setupHint" class="hint-banner" hidden>
+      <div class="hint-copy">
+        <i data-lucide="plug" aria-hidden="true"></i>
+        <span data-i18n="setupWorkerHint">Hubungkan Worker untuk melihat Antigravity &amp; Copilot.</span>
+      </div>
+      <button id="goSettingsBtn" type="button" class="hint-action" data-i18n="btnConfigure">Atur</button>
+    </div>
 
     <section id="antigravityCard" class="card" aria-label="Kuota Antigravity" hidden>
       <div class="overview-header">
@@ -117,9 +133,16 @@
           </span>
           <span class="card-title">Antigravity</span>
         </span>
-        <span id="agTier" class="badge num">—</span>
+        <div class="overview-actions">
+          <span id="agTier" class="badge num">—</span>
+          <button id="wakeBtn" type="button" class="mini-action-btn" title="Kirim Auto-Wake sekarang" aria-label="Kirim Auto-Wake sekarang">
+            <i data-lucide="zap" aria-hidden="true"></i>
+            <span data-i18n="btnWakeShort">Wake</span>
+          </button>
+        </div>
       </div>
       <div id="agRows"></div>
+      <div id="agLastWake" class="card-sub-note num" hidden></div>
     </section>
 
     <section id="copilotCard" class="card" aria-label="Kuota GitHub Copilot" hidden>
@@ -134,16 +157,16 @@
         </span>
         <span id="copilotPlan" class="badge num">—</span>
       </div>
-      <div class="bar-header" style="margin-bottom:6px;">
+      <div class="bar-header bar-header-tight">
         <span id="copilotCredits" class="muted num">—</span>
         <span id="copilotPctBadge" class="badge num">—</span>
       </div>
-      <div class="bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div class="bar-track" role="progressbar" aria-label="Sisa kredit GitHub Copilot" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div id="copilotBar" class="bar-fill"></div>
       </div>
       <div class="split-meta">
         <div class="meta-line">
-          <i data-lucide="clock"></i>
+          <i data-lucide="clock" aria-hidden="true"></i>
           <span data-i18n="monthlyResetLabel">Reset bulanan</span>
         </div>
         <span id="copilotCountdown" class="badge num overview-timer">—</span>
@@ -151,14 +174,14 @@
     </section>
 
     <button id="syncBtn" type="button" class="btn btn-primary">
-      <i data-lucide="refresh-cw" id="syncIcon"></i>
+      <i data-lucide="refresh-cw" id="syncIcon" aria-hidden="true"></i>
       <span id="syncBtnLabel" data-i18n="btnSyncNow">Sinkronkan sekarang</span>
     </button>
 
     <div id="lastScraped" class="footer-note num">Auto-sync 15m aktif</div>
   </main>
 
-  <section id="panel-settings" class="panel" role="tabpanel" hidden>
+  <section id="panel-settings" class="panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
     <div class="card">
       <div class="field">
         <label class="field-label" for="workerUrl">Cloudflare Worker URL</label>
@@ -171,16 +194,58 @@
         <label class="field-label" for="authToken">X-Auth-Token</label>
         <div class="input-wrap">
           <input id="authToken" class="input has-trailing" type="password" placeholder="e.g. qra-9f4a2c8e..." autocomplete="off" />
-          <button id="toggleTokenBtn" type="button" class="input-toggle" title="Tampilkan atau sembunyikan token" aria-label="Tampilkan token">
-            <i data-lucide="eye"></i>
+          <button id="toggleTokenBtn" type="button" class="input-toggle" title="Tampilkan atau sembunyikan token" aria-label="Tampilkan token" aria-pressed="false">
+            <i data-lucide="eye" aria-hidden="true"></i>
           </button>
         </div>
       </div>
 
-      <button id="saveBtn" type="button" class="btn btn-secondary">
-        <i data-lucide="save"></i>
-        <span id="saveBtnLabel" data-i18n="btnSaveSettings">Simpan pengaturan</span>
-      </button>
+      <div id="settingsFeedback" class="settings-feedback" role="status" aria-live="polite" hidden></div>
+
+      <div class="btn-row">
+        <button id="testConnBtn" type="button" class="btn btn-secondary">
+          <i data-lucide="wifi" aria-hidden="true"></i>
+          <span id="testConnLabel" data-i18n="btnTestConn">Tes koneksi</span>
+        </button>
+        <button id="saveBtn" type="button" class="btn btn-primary">
+          <i data-lucide="save" aria-hidden="true"></i>
+          <span id="saveBtnLabel" data-i18n="btnSaveSettings">Simpan</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="calendarSettingsCard" class="card" hidden>
+      <div class="overview-header">
+        <span class="card-title">
+          <i data-lucide="calendar-check" aria-hidden="true"></i>
+          <span data-i18n="calCardTitle">Google Calendar &amp; Tasks</span>
+        </span>
+        <span id="calOAuthBadge" class="badge num">—</span>
+      </div>
+      <div class="muted cal-note" data-i18n="calCardNote">Hanya reset mingguan (tanpa 5h).</div>
+
+      <div class="check-grid">
+        <label class="check-item"><input type="checkbox" id="extCalEnabled" /> <span data-i18n="calEnabled">Auto-sync aktif</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalCalendar" /> <span>Google Calendar</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalTasks" /> <span>Google Tasks</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalAgWeekly" /> <span>Antigravity Weekly</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalGwWeekly" /> <span>Gemini Web Weekly</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalCopilot" /> <span>Copilot Monthly</span></label>
+        <label class="check-item"><input type="checkbox" id="extCalAllDay" /> <span data-i18n="calAllDay">Seharian (tanpa jam)</span></label>
+      </div>
+
+      <div id="calFeedback" class="settings-feedback" role="status" aria-live="polite" hidden></div>
+
+      <div class="btn-row">
+        <button id="extCalSyncBtn" type="button" class="btn btn-secondary">
+          <i data-lucide="refresh-cw" aria-hidden="true"></i>
+          <span id="extCalSyncLabel" data-i18n="btnCalSyncShort">Sync sekarang</span>
+        </button>
+        <button id="extCalSaveBtn" type="button" class="btn btn-primary">
+          <i data-lucide="save" aria-hidden="true"></i>
+          <span id="extCalSaveLabel" data-i18n="btnSaveSettings">Simpan</span>
+        </button>
+      </div>
     </div>
 
     <div class="footer-note" data-i18n="storageNote">Token disimpan lokal di chrome.storage.local</div>
