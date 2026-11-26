@@ -25,7 +25,7 @@ flowchart LR
 
 | Provider | Source | Tracked Windows | Auto-Wake | Alerts |
 | :--- | :--- | :--- | :--- | :--- |
-| **Antigravity** (`src/cloudcode.js`) | `daily-cloudcode-pa.googleapis.com` | Gemini (5h + Weekly), Claude & GPT (5h + Weekly), Gemini 4 Argon (Weekly); supports nested `quotaInfo` buckets and synthesizes missing Gemini `5H` windows from `fetchAvailableModels` | Yes, per 5h pool (`"1+1="`, max 1 output token, prefers `-low`/`flash-lite` and falls back to live `Medium` models such as `gemini-3.8-flash*` / `gemini-4-hydrogen*`) | Wake (with token breakdown), Reset, Low Quota, Circuit-Breaker, Auth Expired |
+| **Antigravity** (`src/cloudcode.js`) | `daily-cloudcode-pa.googleapis.com` | Gemini (5h + Weekly), Claude & GPT (5h + Weekly); supports nested `quotaInfo` buckets and synthesizes missing Gemini `5H` windows from `fetchAvailableModels` | Yes, per 5h pool (`"1+1="`, max 1 output token, prefers `-low`/`flash-lite` and falls back to live `Medium` models such as `gemini-3.8-flash*` / `gemini-4-hydrogen*`) | Wake (with token breakdown), Reset, Low Quota, Circuit-Breaker, Auth Expired |
 | **GitHub Copilot** (`src/copilot.js`) | `api.github.com/copilot_internal/user` | Monthly AI credits (`credits_used`, `credits_remaining`, `entitlement`) | No (monthly cycle only) | Low Quota, Monthly Reset |
 | **Gemini Web** (`extension/`) | `batchexecute` RPC (`jSf9Qc` / `otAQ7b`), `GEMINI_WEB_GRAPHQL` (`UsagePageQuery`), with DOM fallback | 5h/session (`dailyUsed`), Weekly (`weeklyUsed`), Plan Tier | No (browser session only) | Low Quota |
 
@@ -91,7 +91,6 @@ npm run deploy
 | `AUTO_WAKE_ENABLED` | `"true"` | Enable or disable automatic wake pings |
 | `WAKE_GEMINI_MODEL` | `"gemini-3.8-flash-low"` | Model used to wake the Gemini 5h pool (auto-prefers `flash-lite`/`-low` variants, falls back to live Gemini 3.8/4 models) |
 | `WAKE_CLAUDE_MODEL` | `"claude-sonnet-5-5-low"` | Model used to wake the Claude & GPT 5h pool (auto-prefers `-low` variants) |
-| `WAKE_ARGON_MODEL` | `"gemini-4-argon-low"` | Model used to wake the Gemini 4 Argon pool if a 5h window is active |
 | `WAKE_PROMPT` | `"1+1="` | Minimal prompt text sent on wake |
 | `WAKE_MAX_OUTPUT_TOKENS` | `"1"` | Output token cap for wake requests (`stopSequences: ["\n"]`, `thinkingBudget: 0`, no `systemInstruction`) |
 | `WAKE_TIME_WINDOW` | `""` | Optional local window like `"07:00-23:00"`, empty for 24/7 |
@@ -122,7 +121,7 @@ npm run deploy
 What the popup shows:
 
 - **Gemini Web**: 5h session ring with remaining %, exact reset countdown, burn-rate / pace forecast (`Laju aman` vs `Boros · habis ~Xj Ym lagi`), and the weekly limit bar with its own countdown and pace. Uses lightweight `batchexecute` RPC (`jSf9Qc` + `otAQ7b`) first (<2 MB RAM, no iframe), falls back to `GEMINI_WEB_GRAPHQL` (`UsagePageQuery`), and only uses the `offscreen` DOM scraper if both fail.
-- **Antigravity**: dedicated card with the Antigravity mark, plan tier badge, one row per pool (`Gemini Models`, `Claude and GPT`, `Gemini 4 Argon`), remaining %, mini bar, and live 5h reset countdown. Loaded from `GET /api/quota/latest`.
+- **Antigravity**: dedicated card with the Antigravity mark, plan tier badge, one row per pool (`Gemini Models`, `Claude and GPT`), remaining %, mini bar, and live 5h reset countdown. Loaded from `GET /api/quota/latest`.
 - **GitHub Copilot**: dedicated card with the GitHub mark, plan tier, AI credits left, remaining % bar, and monthly reset countdown. Loaded from `GET /api/quota/latest`.
 - **Footer**: time since the last read and time until the next auto-sync.
 - **Language**: an `ID | EN` switch in the header. The choice is stored in `chrome.storage.local` (`uiLang`). The Worker dashboard has the same switch, stored in `localStorage` (`qra_lang`).

@@ -190,7 +190,7 @@ function parseWindowFromBucket(bucket) {
 }
 
 /**
- * Parse official quota_summary.groups into structured Quota Groups (5h + Weekly + Argon).
+ * Parse official quota_summary.groups into structured Quota Groups (5h + Weekly).
  */
 export function parseQuotaGroups(modelsData, summaryData, parsedModels) {
   const rawSummaries = [
@@ -238,10 +238,8 @@ export function parseQuotaGroups(modelsData, summaryData, parsedModels) {
     }
   }
 
-  const groups = Array.from(groupMap.values());
-  if (argonWeekly) {
-    groups.push({ name: 'Gemini 4 Argon', windows: [argonWeekly] });
-  }
+  // Gemini 4 Argon was removed from Antigravity; ignore any leftover Argon group.
+  const groups = Array.from(groupMap.values()).filter((g) => !/argon/i.test(g.name));
 
   // Fallback for missing Gemini group or Gemini group returning only WEEKLY without 5H
   const geminiGroup = groups.find(
@@ -296,28 +294,6 @@ export function parseQuotaGroups(modelsData, summaryData, parsedModels) {
           remaining_percent: minC.remaining_percent,
           reset_at: minC.reset_at,
           reset_time_iso: minC.reset_time_iso,
-        }],
-      });
-    }
-  }
-
-  const hasArgonGroup = groups.some((g) => g.name.toLowerCase().includes('argon'));
-  if (!hasArgonGroup && parsedModels.length > 0) {
-    const argon = parsedModels.filter(
-      (m) => (m.id.toLowerCase().includes('argon') || m.name.toLowerCase().includes('argon')) && m.remaining_percent !== null,
-    );
-    if (argon.length > 0) {
-      const minA = argon.reduce((a, b) => (a.remaining_percent <= b.remaining_percent ? a : b));
-      groups.push({
-        name: 'Gemini 4 Argon',
-        windows: [{
-          id: ARGON_WEEKLY_BUCKET_ID,
-          label: 'Weekly limit',
-          window_type: 'WEEKLY',
-          remaining_fraction: minA.remaining_fraction,
-          remaining_percent: minA.remaining_percent,
-          reset_at: minA.reset_at,
-          reset_time_iso: minA.reset_time_iso,
         }],
       });
     }

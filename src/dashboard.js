@@ -69,11 +69,7 @@ export function renderDashboardHtml(latest, wakeState, offsetHours = 7) {
   const groupCards = groups
     .map((g) => {
       const lowerName = (g.name || '').toLowerCase();
-      const poolKey = lowerName.includes('argon')
-        ? 'argon'
-        : lowerName.includes('gemini')
-          ? 'gemini'
-          : 'claude-gpt';
+      const poolKey = lowerName.includes('gemini') ? 'gemini' : 'claude-gpt';
       const decision = wakeDecisions[poolKey];
       const decisionI18nKey = decision?.reason ? `wake_${decision.reason.replace(/[^a-z0-9_]/gi, '_')}` : '';
       const decisionBadge = decision

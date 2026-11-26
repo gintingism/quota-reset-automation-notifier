@@ -97,17 +97,6 @@ export function getPoolCandidateModels(agSnapshot, poolName, preferredId) {
     poolModels.forEach((m) => push(m.id));
   };
 
-  if (lower.includes('argon')) {
-    const isArgon = (m) => m.id.toLowerCase().includes('argon') || (m.name || '').toLowerCase().includes('argon');
-    safeModels.filter((m) => isArgon(m) && isLowTierModel(m)).forEach((m) => push(m.id));
-    safeModels.filter(isArgon).forEach((m) => push(m.id));
-    if (ranked.length === 0) {
-      appendFallbackVariants(models.filter(isArgon));
-    }
-    push(normalizedPreferred || 'gemini-4-argon-low');
-    return ranked;
-  }
-
   if (lower.includes('gemini')) {
     const gem = safeModels.filter((m) => m.id.includes('gemini') && !m.id.includes('argon'));
     const preferredMatch = normalizedPreferred ? gem.find((m) => m.id === normalizedPreferred) : null;
@@ -226,17 +215,12 @@ export async function runAutomationTick(env, options = { forceWake: false }) {
         const targetWin = fiveHourWin || weeklyWin || (group.windows || [])[0];
         if (!targetWin) continue;
         const lowerGroup = group.name.toLowerCase();
-        const poolKey = lowerGroup.includes('argon')
-          ? 'argon'
-          : lowerGroup.includes('gemini')
-            ? 'gemini'
-            : 'claude-gpt';
+        if (lowerGroup.includes('argon')) continue; // Argon removed from Antigravity
+        const poolKey = lowerGroup.includes('gemini') ? 'gemini' : 'claude-gpt';
         const preferredModel =
-          poolKey === 'argon'
-            ? env.WAKE_ARGON_MODEL || 'gemini-4-argon-low'
-            : poolKey === 'gemini'
-              ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3.8-flash-low'
-              : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-low';
+          poolKey === 'gemini'
+            ? env.WAKE_GEMINI_MODEL || env.WAKE_MODEL || 'gemini-3.8-flash-low'
+            : env.WAKE_CLAUDE_MODEL || 'claude-sonnet-5-5-low';
         const candidates = getPoolCandidateModels(agSnapshot, group.name, preferredModel);
         const modelId = candidates[0];
         if (!modelId) continue;

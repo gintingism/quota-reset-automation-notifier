@@ -243,8 +243,6 @@ test('normalizeLowModelId and pickPoolModel always select lightest low/flash mod
       { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
       { id: 'claude-sonnet-4-6-medium', name: 'Claude Sonnet 4.6 (Medium)' },
       { id: 'claude-sonnet-4-6-low', name: 'Claude Sonnet 4.6 (Low)' },
-      { id: 'gemini-4-argon-medium', name: 'Gemini 4 Argon (Medium)' },
-      { id: 'gemini-4-argon-low', name: 'Gemini 4 Argon (Low)' },
     ],
   };
 
@@ -259,10 +257,6 @@ test('normalizeLowModelId and pickPoolModel always select lightest low/flash mod
   assert.equal(
     pickPoolModel(snapshot, 'Claude and GPT models', 'claude-sonnet-5-5-medium'),
     'claude-sonnet-4-6-low',
-  );
-  assert.equal(
-    pickPoolModel(snapshot, 'Gemini 4 Argon', 'gemini-4-argon-medium'),
-    'gemini-4-argon-low',
   );
 });
 
@@ -502,22 +496,20 @@ test('shouldTriggerOnReset wakes idle WEEKLY-only pool (Gemini 4 Argon) and skip
   );
 });
 
-test('parseAntigravityModels synthesizes Gemini 4 Argon weekly group when omitted from quota_summary', () => {
+test('parseAntigravityModels ignores leftover Gemini 4 Argon and exposes Carbon/Neon', () => {
   const parsed = parseAntigravityModels(
     {
       models: {
-        'gemini-4-argon-medium': {
-          displayName: 'Gemini 4 Argon (Medium)',
-          quotaInfo: { remainingFraction: 1.0 },
-        },
+        'gemini-4-argon-medium': { displayName: 'Gemini 4 Argon (Medium)', quotaInfo: { remainingFraction: 1.0 } },
+        'gemini-4-carbon-low': { displayName: 'Gemini 4 Carbon (Low)', quotaInfo: { remainingFraction: 0.8 } },
+        'gemini-4-neon-low': { displayName: 'Gemini 4 Neon (Low)', quotaInfo: { remainingFraction: 0.8 } },
       },
     },
     null,
   );
-  const argonGroup = parsed.groups.find((g) => g.name === 'Gemini 4 Argon');
-  assert.ok(argonGroup);
-  assert.equal(argonGroup.windows[0].window_type, 'WEEKLY');
-  assert.equal(argonGroup.windows[0].remaining_percent, 100);
+  assert.equal(parsed.groups.some((g) => /argon/i.test(g.name)), false);
+  assert.ok(parsed.models.some((m) => m.id === 'gemini-4-carbon-low'));
+  assert.ok(parsed.models.some((m) => m.id === 'gemini-4-neon-low'));
 });
 
 test('getPoolCandidateModels skips gemini-2.5-flash (Gemini 3.5 Flash Lite alias) in favor of gemini-3.8-flash-low', () => {
