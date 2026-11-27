@@ -27,9 +27,6 @@
     "auth:calendar": "node scripts/get-calendar-token.mjs"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.5",
-    "lucide": "^1.72.0",
-    "tailwindcss": "^4.3.5",
     "wrangler": "^4.161.0"
   }
 }
