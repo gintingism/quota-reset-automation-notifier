@@ -184,9 +184,9 @@ export async function getCalendarAccessToken(env, fetchImpl = fetch) {
   }
 
   const body = new URLSearchParams({
-    client_id: env.GCAL_CLIENT_ID,
-    client_secret: env.GCAL_CLIENT_SECRET,
-    refresh_token: env.GCAL_REFRESH_TOKEN,
+    client_id: String(env.GCAL_CLIENT_ID || '').trim(),
+    client_secret: String(env.GCAL_CLIENT_SECRET || '').trim(),
+    refresh_token: String(env.GCAL_REFRESH_TOKEN || '').trim(),
     grant_type: 'refresh_token',
   });
 
@@ -197,7 +197,8 @@ export async function getCalendarAccessToken(env, fetchImpl = fetch) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.access_token) {
-    throw new Error(`Google Calendar OAuth failed (${res.status}): ${data.error_description || data.error || 'unknown'}`);
+    const detail = [data.error, data.error_description].filter(Boolean).join(': ') || 'unknown';
+    throw new Error(`Google Calendar OAuth failed (${res.status}): ${detail}`);
   }
 
   const expiresInSec = Number(data.expires_in) || 3600;
